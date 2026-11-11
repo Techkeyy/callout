@@ -1,0 +1,29 @@
+name: keeper
+# Records outcomes on CallBook v3: any open call whose stop or target was crossed, or that expired, gets resolve()d.
+# resolve() is permissionless; this wallet only pays gas and holds no user funds.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+concurrency:
+  group: keeper
+  cancel-in-progress: false
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: node --experimental-strip-types scripts/keeper.ts
+        env:
+          KEEPER_KEY: ${{ secrets.KEEPER_KEY }}
+          CALLBOOK_ADDRESS: "0x7D9F2b0c5257Ac2fe12f07713971a530B389365c"

@@ -44,7 +44,7 @@ Why a bond and not "fee only if the target hits"? dreamDEX pays builder fees at 
 3. **Takes** it for a follower: sets up gas, practice USDso and margin if needed, approves the caller once, fills the order, and arms the call's stop and target.
 4. **Tags** each follower order with `userData = (0xCA11 << 48) | callId` through the raw PerpPool `placeOrder`, so the fill names the caller as builder.
 5. **Counts** the take on chain. CallBook subscribes to dreamDEX MarginBank's `BuilderFeeCharged(payer, builder, perpPool, amount)` event with Somnia Reactivity. A validator runs the handler in the same block as the fill and credits the take to the caller's open call on that market. No server, no database, no indexer.
-6. **Resolves** the call. Anyone can call `resolve(id)`, which reads the perp pool's live `tryGetMarkPrice()`. For a long: mark at or above the target is HIT, mark at or below the stop is STOPPED, and after expiry the call is EXPIRED. A short is the mirror. A keeper script (`web/scripts/keeper.ts`) does this automatically, and anyone can press "Record on chain" on the card.
+6. **Resolves** the call. Anyone can call `resolve(id)`, which reads the perp pool's live `tryGetMarkPrice()`. For a long: mark at or above the target is HIT, mark at or below the stop is STOPPED, and after expiry the call is EXPIRED. A short is the mirror. A keeper (`web/scripts/keeper.ts`) runs every 10 minutes on GitHub Actions (`.github/workflows/keeper.yml`) from its own gas-only wallet, and anyone can press "Record on chain" on the card.
 7. **Settles the bond.** HIT or EXPIRED returns the bond to the caller. STOPPED splits it among the takers pro rata by the builder fees they paid, and each taker claims their share. With zero takers the caller gets the bond back.
 8. **Records** the outcome. Each caller has an on-chain record (hits, stops, expired), and the hit rate shows on every card, every profile and the [leaderboard](https://callout-perps.vercel.app/board).
 9. **Pays** the caller the builder fee, which lands in their MarginBank balance. They withdraw it from their page (`/u/<address>`).
@@ -165,14 +165,14 @@ Script-level proof of the money loop lives in `spike/`. It needs a funded testne
 | `web/src/components/Earnings.tsx` | Caller earnings and withdraw |
 | `web/src/app/c/[id]` | Call card page and share image |
 | `web/src/app/board` | Leaderboard ranked by hit rate |
-| `web/scripts/keeper.ts` | Resolves calls automatically when the price passes a level |
+| `web/scripts/keeper.ts` | Resolves calls automatically when the price passes a level; scheduled by `.github/workflows/keeper.yml` |
 
 Stack: Next.js 16, viem, `@somnia-chain/markets-sdk` 0.33, Solidity 0.8.30 with Foundry, Somnia Reactivity, Vercel.
 
 ## Limits
 
 - Testnet only, paper USDso. No real funds.
-- An outcome is recorded only when someone resolves while the price is past the level. A brief touch that nobody catches won't count. The keeper narrows that gap but can't close it.
+- An outcome is recorded only when someone resolves while the price is past the level. A brief touch that nobody catches won't count. The 10-minute keeper narrows that gap but can't close it.
 - dreamDEX's practice-USDso voucher claim reverts for some plain wallets. The app checks first and routes to deposit.
 - Prices come from dreamDEX's on-chain mark. If it is stale, takes are blocked and resolves revert.
 - One open call per caller per market.

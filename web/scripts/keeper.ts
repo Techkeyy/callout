@@ -2,7 +2,8 @@
 // Run once:   node --experimental-strip-types scripts/keeper.ts
 // Run forever: node --experimental-strip-types scripts/keeper.ts --watch      (polls every 20s)
 // Only look:   node --experimental-strip-types scripts/keeper.ts --dry
-// The key is read at runtime from ../spike/.env (CALLER_KEY by default, --key=NAME for another) and never printed.
+// The key is read at runtime from the KEEPER_KEY env var (used by the scheduled GitHub Action), else from ../spike/.env
+// (CALLER_KEY by default, --key=NAME for another). It is never printed.
 import fs from "node:fs";
 import { createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -39,10 +40,11 @@ const spike = readEnvFile("../../spike/.env");
 const web = readEnvFile("../.env.local");
 const CALL_BOOK = (process.env.CALLBOOK_ADDRESS ?? web.NEXT_PUBLIC_CALLBOOK_ADDRESS ?? "") as `0x${string}`;
 if (!/^0x[0-9a-fA-F]{40}$/.test(CALL_BOOK)) throw new Error("CallBook address not set. Put NEXT_PUBLIC_CALLBOOK_ADDRESS in web/.env.local.");
-if (!dry && !spike[keyName]) throw new Error(`${keyName} not found in spike/.env`);
+const KEY = process.env.KEEPER_KEY || spike[keyName];
+if (!dry && !KEY) throw new Error(`No key: set KEEPER_KEY or put ${keyName} in spike/.env`);
 
 const pub = createPublicClient({ chain: somniaTokyo, transport: http(HTTP_URL, { timeout: 25000, retryCount: 4, retryDelay: 1500 }) });
-const account = dry ? null : privateKeyToAccount(spike[keyName] as `0x${string}`);
+const account = dry ? null : privateKeyToAccount(KEY as `0x${string}`);
 const wc = account ? createWalletClient({ account, chain: somniaTokyo, transport: http(HTTP_URL, { timeout: 25000, retryCount: 4, retryDelay: 1500 }) }) : null;
 const fx = dex.makeMarkets();
 
