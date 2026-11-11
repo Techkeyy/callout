@@ -117,3 +117,7 @@ UI test log, 2026-11-11, tester on /c/1 (local dev):
 - 2026-11-11: owner's 40 STT landed on Shannon (Global, 50312), not Tokyo. Bridged 44 STT Global to Tokyo via Hyperlane warp route `0x67cd0778a719099daf2d346ad0db0d9e6ff6674c` `transferRemote(50383, bytes32(recipient), amount)` with value = amount, gas quote 0 (tx 0xda753acd...3866), delivered in under 15s.
 - **CallBook v3 DEPLOYED:** `0x7D9F2b0c5257Ac2fe12f07713971a530B389365c` (tx 0x0187b308...93d4, 33M gas, cast send --create --gas-limit 40M). watch() with 33 STT (tx 0xf65091e4...51ad), Reactivity sub 38907707, minBond 5 USDso. v2 `0x073C...91B7` is history.
 - Prod speed fix deployed (665f0a9): /c/1 cold 2.3s / warm 0.8s (was 33s).
+
+- **v3 PROVEN + LIVE (2026-11-11):** HIT path by script (call #1: post 0xd3860475, take 0xfcf872a3, resolve HIT 0x4ee86f1e, caller claim 0xcdd75bd7). STOPPED path through the real UI (call #2): caller composer approve 0x2b993486 + post 0x5427dc63; tester took it; tester pressed Record on chain, STOPPED at 73,629.9 (0x972b44fc); tester claimed the full 5 USDso bond (0xd23b71ed; 27.78 to 32.78). Record 1 hit / 1 stopped. Prod redeployed on v3 (callout-9dnpkqr5r); /c/2 0.9s, /board 1.3s.
+- UI bug fixed by director: the composer failed with a generic error when the page-load bondToken read lost to a slow RPC; it now fetches at post time with retries and logs real errors.
+- The usage-limit pause restarted the preview pane; launch.json now lives in callout/.claude/launch.json (web, signer-tester, signer-caller).
