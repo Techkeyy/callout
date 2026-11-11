@@ -1,0 +1,74 @@
+import { getAddress, isAddress } from "viem";
+
+export { callBookAbi } from "./callbook.abi";
+
+export interface Call {
+  caller: `0x${string}`;
+  pool: `0x${string}`;
+  isLong: boolean;
+  postedAt: bigint;
+  expiresAt: bigint;
+  closedAt: bigint;
+  entry: bigint;
+  stop: bigint;
+  target: bigint;
+  note: string;
+}
+
+export const NOTE_MAX = 280;
+
+/** The deployed address, or null when NEXT_PUBLIC_CALLBOOK_ADDRESS is unset or malformed. */
+export function getCallBookAddress(): `0x${string}` | null {
+  const raw = process.env.NEXT_PUBLIC_CALLBOOK_ADDRESS?.trim();
+  if (!raw || !isAddress(raw)) return null;
+  return getAddress(raw);
+}
+
+export const ERROR_MESSAGES: Record<string, string> = {
+  BadPrices: "The prices do not line up. A long needs stop below entry below target, a short the reverse.",
+  BadExpiry: "That expiry is not allowed. Pick one of the listed durations.",
+  NoteTooLong: "Your note is too long. Keep it to 280 characters.",
+  ZeroPool: "No market was picked. Choose a market and try again.",
+  NotCaller: "Only the person who posted this call can close it.",
+  AlreadyClosed: "This call is already closed.",
+  NoSuchCall: "This call does not exist.",
+  AlreadyOpen: "You already have an open call on this market. Close it first.",
+};
+
+export type DescribedError = { kind: "rejected" } | { kind: "error"; message: string };
+
+/** Turn a viem/wagmi error into plain words. A wallet rejection is not an error. */
+export function describeError(err: unknown): DescribedError {
+  const e = err as {
+    shortMessage?: string;
+    message?: string;
+    walk?: (fn: (x: unknown) => boolean) => unknown;
+  };
+  let rejected = false;
+  let customName: string | undefined;
+  const check = (x: unknown): boolean => {
+    const o = x as { name?: string; code?: number; errorName?: string; data?: { errorName?: string } } | undefined;
+    if (!o) return false;
+    if (o.name === "UserRejectedRequestError" || o.code === 4001) rejected = true;
+    const n = o.data?.errorName ?? o.errorName;
+    if (n && ERROR_MESSAGES[n]) customName = n;
+    return false;
+  };
+  try {
+    if (typeof e?.walk === "function") e.walk(check);
+    else check(e);
+  } catch {
+    /* ignore */
+  }
+  if (rejected) return { kind: "rejected" };
+  if (customName) return { kind: "error", message: ERROR_MESSAGES[customName] };
+  const text = `${e?.shortMessage ?? ""} ${e?.message ?? ""}`;
+  for (const name of Object.keys(ERROR_MESSAGES)) {
+    if (text.includes(name)) return { kind: "error", message: ERROR_MESSAGES[name] };
+  }
+  if (/user rejected|denied transaction|rejected the request/i.test(text)) return { kind: "rejected" };
+  if (/insufficient funds/i.test(text)) {
+    return { kind: "error", message: "Your wallet has no STT for gas. Get testnet STT, then try again." };
+  }
+  return { kind: "error", message: "Something went wrong sending the call. Nothing was posted. Try again." };
+}
