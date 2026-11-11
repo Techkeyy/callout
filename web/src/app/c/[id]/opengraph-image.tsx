@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { parseCallId, readCall } from "@/lib/calls";
-import { getMarkets } from "@/lib/markets";
-import { displayDecimals, displayName, formatDisplay } from "@/lib/prices";
+import { getMarketMeta } from "@/lib/markets";
+import { displayDecimals, formatDisplay } from "@/lib/prices";
 
 export const alt = "Callout trade call";
 export const size = { width: 1200, height: 630 };
@@ -13,11 +13,10 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
   const id = parseCallId(raw);
   const r = id ? await readCall(id, { retries: 0, timeoutMs: 6000 }) : null;
   const ok = r && r.status === "ok" ? r.call : null;
-  let market = displayName("PERP");
+  let market = "PERP";
   let dp = 2;
   if (ok) {
-    const ms = await getMarkets().catch(() => []);
-    const m = ms.find((x) => x.pool.toLowerCase() === ok.pool.toLowerCase());
+    const m = await getMarketMeta(ok.pool, 1500);
     if (m) {
       market = m.name;
       dp = displayDecimals(BigInt(m.tickSize));

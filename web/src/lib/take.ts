@@ -151,6 +151,47 @@ export async function withRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 
   throw last;
 }
 
+/**
+ * Hedged request: start fn now, and if it has not answered after each delay start another copy in parallel.
+ * The first success wins; it rejects only when every copy has failed. Cuts the tail when one RPC call hangs.
+ */
+export function hedge<T>(fn: () => Promise<T>, delaysMs: number[] = [2000, 4000]): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let pending = 0;
+    let launched = 0;
+    let done = false;
+    let lastErr: unknown;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const total = delaysMs.length + 1;
+    const launch = () => {
+      if (done) return;
+      launched++;
+      pending++;
+      fn().then(
+        (v) => {
+          if (done) return;
+          done = true;
+          timers.forEach(clearTimeout);
+          resolve(v);
+        },
+        (e) => {
+          lastErr = e;
+          pending--;
+          // a quick failure should not wait for the timer: launch the next copy now
+          if (!done && launched < total) launch();
+          else if (!done && pending === 0) {
+            done = true;
+            timers.forEach(clearTimeout);
+            reject(lastErr);
+          }
+        },
+      );
+    };
+    launch();
+    delaysMs.forEach((d) => timers.push(setTimeout(launch, d)));
+  });
+}
+
 /** The value of a settled read, or the previous value when it failed. */
 export function settledOr<T>(r: PromiseSettledResult<T>, prev: T): T {
   return r.status === "fulfilled" ? r.value : prev;

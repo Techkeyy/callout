@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { isAddress, getAddress } from "viem";
 import { readCall, readCallsOf, readTakes } from "@/lib/calls";
-import Earnings from "@/components/Earnings";
+import Earnings from "@/components/EarningsLazy";
 import { NOT_CONNECTED_COPY, UNREACHABLE_COPY } from "@/lib/readstate";
-import { getMarkets } from "@/lib/markets";
+import { getMarketMeta } from "@/lib/markets";
 import { callStatus, shortAddress } from "@/lib/time";
-import { displayDecimals, displayName, formatDisplay } from "@/lib/prices";
+import { displayDecimals, formatDisplay } from "@/lib/prices";
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +24,13 @@ export default async function CallerPage({ params }: { params: Promise<{ address
   const who = getAddress(address);
   const of = await readCallsOf(who);
   const ids = of.status === "ok" ? of.ids : null;
-  const markets = await getMarkets().catch(() => []);
   const shown = ids ? ids.slice(0, 50) : [];
   const results = await Promise.all(shown.map((i) => readCall(i)));
   const takesList = await Promise.all((ids ?? []).map((i) => readTakes(i)));
+  // Only the pools these calls use, from the long-lived metadata cache. Never the full live list.
+  const pools = [...new Set(results.flatMap((r) => (r.status === "ok" ? [r.call.pool.toLowerCase()] : [])))];
+  const metas = await Promise.all(pools.map((p) => getMarketMeta(p, 1500)));
+  const markets = metas.filter((m) => m !== null);
   // A failed read must never look like zero. If any take or call read failed, say so instead of showing a low total.
   const partial = takesList.some((t) => t === null) || results.some((r) => r.status === "error");
   const total = takesList.reduce<{ fees: bigint; takers: number; fills: number }>((a, t) => ({ fees: a.fees + (t?.fees ?? 0n), takers: a.takers + (t?.takers ?? 0), fills: a.fills + (t?.fills ?? 0) }), { fees: 0n, takers: 0, fills: 0 });
@@ -82,7 +85,7 @@ export default async function CallerPage({ params }: { params: Promise<{ address
                   <span className="row-id num">#{id.toString()}</span>
                   <span className="row-main">
                     <span className="row-title">
-                      <span className={c.isLong ? "long" : "short"}>{c.isLong ? "Long" : "Short"}</span> {m?.name ?? displayName("PERP")}
+                      <span className={c.isLong ? "long" : "short"}>{c.isLong ? "Long" : "Short"}</span> {m?.name ?? "PERP"}
                     </span>
                     <span className="row-sub num">
                       Entry {formatDisplay(c.entry, dp)} / Stop {formatDisplay(c.stop, dp)} / Target {formatDisplay(c.target, dp)}

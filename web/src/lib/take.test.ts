@@ -16,6 +16,7 @@ import {
   settledOr,
   withRetry,
   withTimeout,
+  hedge,
   marginForTake,
   stopBeforeLiquidation,
   tagCallId,
@@ -321,5 +322,22 @@ describe("error copy", () => {
   it("treats a wallet rejection as not an error, even nested", () => {
     expect(describeTakeError({ code: 4001 })).toEqual({ kind: "rejected" });
     expect(describeTakeError({ message: "x", cause: { name: "UserRejectedRequestError" } })).toEqual({ kind: "rejected" });
+  });
+});
+
+describe("hedged reads", () => {
+  it("returns the first success and does not wait for a hung first copy", async () => {
+    let n = 0;
+    const fn = () => {
+      n++;
+      return n === 1 ? new Promise<string>(() => {}) : Promise.resolve("fast");
+    };
+    expect(await hedge(fn, [20, 40])).toBe("fast");
+    expect(n).toBe(2);
+  });
+  it("launches the next copy straight away when one fails, and rejects only when all fail", async () => {
+    let n = 0;
+    await expect(hedge(async () => { n++; throw new Error("node not ready"); }, [1000, 2000])).rejects.toThrow("node not ready");
+    expect(n).toBe(3);
   });
 });

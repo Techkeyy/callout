@@ -5,10 +5,21 @@ import { useMarkets } from "@/lib/useMarkets";
 import { ageLabel, markAgeSec, STALE_PRICE_COPY } from "@/lib/mark";
 import { callBookAbi, describeError, getCallBookAddress } from "@/lib/callbook";
 import { publicClient, readTakes } from "@/lib/calls";
-import TakePanel from "./TakePanel";
+import dynamic from "next/dynamic";
+
+// The take panel pulls in the markets SDK. Loading it only in the browser keeps the server render fast and light.
+const TakePanel = dynamic(() => import("./TakePanel"), {
+  ssr: false,
+  loading: () => (
+    <div className="panel">
+      <h2>Take this call</h2>
+      <div className="skeleton" style={{ height: 52 }} aria-label="Loading" />
+    </div>
+  ),
+});
 import { txUrl } from "@/lib/chain";
 import { callStatus } from "@/lib/time";
-import { displayDecimals, displayName, formatDisplay, ladderDistances, toNumber } from "@/lib/prices";
+import { displayDecimals, formatDisplay, ladderDistances, toNumber } from "@/lib/prices";
 import Ticket from "./Ticket";
 import Ladder from "./Ladder";
 
@@ -61,7 +72,7 @@ export default function CallLive(p: Props) {
   const market = live ?? (p.initialMarket ? { name: p.initialMarket.name, tickSize: BigInt(p.initialMarket.tickSize), markPrice: BigInt(p.initialMarket.markPrice), markOk: p.initialMarket.markOk, readAt: p.initialMarket.readAt } : null);
   // A stale or unread price is never shown as live.
   const priceOk = !!market && market.markOk;
-  const name = market?.name ?? displayName("PERP");
+  const name = market?.name ?? "Loading market";
   const dp = market ? displayDecimals(market.tickSize) : 2;
   const mark = market && priceOk ? toNumber(market.markPrice) : null;
   const status = callStatus({ expiresAt: BigInt(p.expiresAt), closedAt }, now);
@@ -161,7 +172,7 @@ export default function CallLive(p: Props) {
           </span>
         </p>
         <p className="hint" style={{ margin: "0 0 8px" }}>
-          {!market ? "Waiting for the price." : !priceOk ? `${STALE_PRICE_COPY}.` : market.readAt > 0 ? ageLabel(markAgeSec(market.readAt, now * 1000)) : ""}
+          {!market || market.readAt === 0 ? "Waiting for the price." : !priceOk ? `${STALE_PRICE_COPY}.` : market.readAt > 0 ? ageLabel(markAgeSec(market.readAt, now * 1000)) : ""}
         </p>
         <Ladder isLong={p.isLong} entry={toNumber(entry)} stop={toNumber(stop)} target={toNumber(target)} mark={mark} dp={dp} />
         {dist && (

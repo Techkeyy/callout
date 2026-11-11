@@ -2,7 +2,7 @@ import { createPublicClient, http } from "viem";
 import { callBookAbi, getCallBookAddress, type Call } from "./callbook";
 import { HTTP_URL, somniaTokyo } from "./chain";
 import { classifyReadError, READ_BACKOFF_MS, READ_RETRIES, READ_TIMEOUT_MS, UNREACHABLE_COPY } from "./readstate";
-import { withRetry, withTimeout } from "./take";
+import { hedge, withRetry, withTimeout } from "./take";
 
 export const publicClient = createPublicClient({
   chain: somniaTokyo,
@@ -16,7 +16,9 @@ export interface ReadOpts {
 
 /** A read with a timeout and a short backoff between retries. */
 function robust<T>(fn: () => Promise<T>, o?: ReadOpts): Promise<T> {
-  return withRetry(() => withTimeout(fn(), o?.timeoutMs ?? READ_TIMEOUT_MS), o?.retries ?? READ_RETRIES, READ_BACKOFF_MS);
+  const timeout = o?.timeoutMs ?? READ_TIMEOUT_MS;
+  // A hung RPC call is the common failure: after 2s start a second copy in parallel, and a third after 4s. First success wins.
+  return withRetry(() => withTimeout(hedge(fn, [2000, 4000]), timeout), o?.retries ?? READ_RETRIES, READ_BACKOFF_MS);
 }
 
 export type CallResult =
@@ -32,9 +34,17 @@ export async function readCall(id: bigint, o?: ReadOpts): Promise<CallResult> {
   const address = getCallBookAddress();
   if (!address) return { status: "unavailable" };
   try {
-    const count = await robust(() => publicClient.readContract({ address, abi: callBookAbi, functionName: "callCount" }), o);
-    if (id < 1n || id > count) return { status: "missing" };
-    const call = (await robust(() => publicClient.readContract({ address, abi: callBookAbi, functionName: "getCall", args: [id] }), o)) as Call;
+    if (id < 1n) return { status: "missing" };
+    // An unknown id reverts NoSuchCall. That is an answer, not a failure, so it must not be retried.
+    const call = (await robust(async () => {
+      try {
+        return await publicClient.readContract({ address, abi: callBookAbi, functionName: "getCall", args: [id] });
+      } catch (e) {
+        if (classifyReadError(e) === "missing") return null;
+        throw e;
+      }
+    }, o)) as Call | null;
+    if (call === null) return { status: "missing" };
     return { status: "ok", call };
   } catch (e) {
     return classifyReadError(e) === "missing" ? { status: "missing" } : { status: "error", message: UNREACHABLE_COPY };
