@@ -150,6 +150,35 @@ contract ReactiveTest is Base {
         assertEq(_outcome(id), 0);
     }
 
+    /// Scheduled events carry no originating transaction; they settle regardless of tx.origin.
+    function test_scheduleSettlesWhateverTheOrigin() public {
+        vm.deal(address(book), 33 ether);
+        uint256 id = _postLong();
+        uint64 exp = book.getCall(id).expiresAt;
+        vm.warp(exp);
+        pm.set(true, 101e18);
+        bytes32[] memory t = new bytes32[](2);
+        t[0] = SCHEDULE;
+        t[1] = bytes32(uint256(exp) * 1000 + (id % 1000));
+        vm.prank(PRECOMPILE, address(0xdead));
+        book.onEvent(PRECOMPILE, t, "");
+        assertEq(_outcome(id), 3);
+        // a duplicate trigger changes nothing
+        pm.set(true, DOWN);
+        vm.prank(PRECOMPILE, rando);
+        book.onEvent(PRECOMPILE, t, "");
+        assertEq(_outcome(id), 3);
+    }
+
+    /// An early trigger (before expiry, levels untouched) settles nothing.
+    function test_scheduleBeforeExpiryIsNoop() public {
+        vm.deal(address(book), 33 ether);
+        uint256 id = _postLong();
+        uint64 exp = book.getCall(id).expiresAt;
+        _fireSchedule(uint256(exp) * 1000 + (id % 1000));
+        assertEq(_outcome(id), 0);
+    }
+
     function test_watchNeedsReserveAndOnce() public {
         vm.expectRevert(CallBook.NeedsBalance.selector);
         book.watch();

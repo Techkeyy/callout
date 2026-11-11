@@ -46,7 +46,11 @@ const mk = (key: string) => {
   const wc = createWalletClient({ account, chain: somniaTokyo, transport: http(HTTP_URL, { timeout: 25000, retryCount: 4, retryDelay: 1500 }) });
   return { address: account.address, account, wc, fx: dex.makeMarkets(wc) };
 };
-const caller = mk(keys.CALLER_KEY);
+// Options: --caller=TESTER_KEY (key name in spike/.env), --market=ETH (symbol prefix), --expiry=240 (seconds),
+// --stepbps=15 (stop and target distance), --chain-settles (do not resolve; wait for the expiry schedule to settle it).
+const opt = (k: string, d: string) => process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=")[1] ?? d;
+const chainSettles = process.argv.includes("--chain-settles");
+const caller = mk(keys[opt("caller", "CALLER_KEY")]);
 const follower = mk(keys.FOLLOWER_KEY);
 
 /** estimate x 2, send, wait. */
@@ -61,7 +65,7 @@ const read = (fn: string, args: any[] = []) => pub.readContract({ address: CALL_
 
 // ---------- market and levels ----------
 const all = await caller.fx.loadMarkets(true);
-const btc = Object.values(all).find((m: any) => m.type === "swap" && m.symbol.startsWith("BTC/")) as any;
+const btc = Object.values(all).find((m: any) => m.type === "swap" && m.symbol.startsWith(opt("market", "BTC") + "/")) as any;
 const i = btc.info;
 const market: dex.DexMarket = {
   pool: i.poolAddress,
@@ -86,7 +90,7 @@ for (let n = 0; n < 45 && !(live && live.markOk); n++) {
 if (!live || !live.markOk) throw new Error("The price feed stayed stale for 3 minutes. Try again later.");
 market.markPrice = BigInt(live.markPrice);
 const entry = alignToTick(market.markPrice, market.tickSize);
-const step = alignToTick((entry * 15n) / 10_000n, market.tickSize) || market.tickSize; // 0.15%, the v4 minimum stop is 0.1%
+const step = alignToTick((entry * BigInt(opt("stepbps", "15"))) / 10_000n, market.tickSize) || market.tickSize; // default 0.15%, the v4 minimum stop is 0.1%
 const target = entry + step;
 const stop = entry - step;
 console.log("CallBook", CALL_BOOK, "| mark", u(market.markPrice), "| entry", u(entry), "stop", u(stop), "target", u(target));
@@ -109,7 +113,7 @@ if (allowance < bond) {
 }
 const openId = (await read("openCallOf", [caller.address, market.pool])) as bigint;
 if (openId !== 0n) throw new Error(`caller already has open call #${openId} on this market. Resolve or let it expire first.`);
-const expiresAt = BigInt(Math.floor(Date.now() / 1000) + 3600);
+const expiresAt = BigInt(Math.floor(Date.now() / 1000) + Number(opt("expiry", "3600")));
 const posted = await write(caller, CALL_BOOK, callBookAbi, "post", [market.pool, true, entry, stop, target, expiresAt, "v4 proof: stop and target 0.15% from the mark", capacity, bond]);
 note("post", posted.hash);
 let id = 0n;
@@ -142,12 +146,24 @@ for (let n = 0; n < 20 && takes.fills === 0; n++) {
   await sleep(2500);
   takes = (await read("getTakes", [id])) as any;
 }
-console.log("3. getTakes:", takes.takers, "takers", takes.fills, "fills", u(takes.fees), "fees | feeOf(follower)", u((await read("feeOf", [id, follower.address])) as bigint));
+console.log("3. getTakes:", takes.takers, "takers", takes.fills, "fills", u(takes.fees), "fees", u(takes.covered), "covered | feeOf(follower)", u((await read("feeOf", [id, follower.address])) as bigint), "coveredOf(follower)", u((await read("coveredOf", [id, follower.address])) as bigint), "| expiry schedule subscription", ((await read("expirySubscriptionOf", [id])) as bigint).toString());
 
 // ---------- 4. record the outcome ----------
-console.log("4. waiting for the mark to cross a level (one tick either way)...");
 let resolved = false;
-for (let n = 0; n < 60 && !resolved; n++) {
+if (chainSettles) {
+  console.log("4. not resolving: waiting for the chain to settle the call at expiry", new Date(Number(expiresAt) * 1000).toISOString());
+  for (let n = 0; n < 90 && !resolved; n++) {
+    await sleep(4000);
+    const r = (await read("getResult", [id])) as any;
+    if (Number(r.outcome) !== 0) {
+      resolved = true;
+      console.log("   settled by the chain at", new Date(Number(r.resolvedAt) * 1000).toISOString(), "(expiry was", new Date(Number(expiresAt) * 1000).toISOString() + ")");
+    }
+  }
+  if (!resolved) throw new Error("the chain did not settle the call within 6 minutes of starting to wait");
+}
+if (!resolved) console.log("4. waiting for the mark to cross a level (one tick either way)...");
+for (let n = 0; n < 60 && !resolved && !chainSettles; n++) {
   const s = parseLiveState((await caller.fx.client.getPerpState(market.pool).catch(() => null)) as never);
   const would = s ? deriveOutcome({ isLong: true, mark: BigInt(s.markPrice), markOk: s.markOk, stop, target, nowSec: Math.floor(Date.now() / 1000), expiresAtSec: Number(expiresAt) }) : null;
   if (would === null) {

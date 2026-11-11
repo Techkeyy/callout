@@ -1,4 +1,4 @@
-// Copied from contracts/out-abi/CallBook.json (CallBook v4). Regenerate when the contract changes.
+// Copied from contracts/out-abi/CallBook.json (CallBook v4.1). Regenerate when the contract changes.
 export const callBookAbi = [
   {
     "type": "constructor",

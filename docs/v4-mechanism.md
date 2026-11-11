@@ -12,7 +12,7 @@ v3 made callers post a bond. An outside review found that the bond only punished
 | No reentrancy guard on `claim`. | outside review | `nonReentrant` on every state-changing entry point. Transfers were already checked for success. |
 | The entry was never checked against the market, so a caller could post a target the price had already passed and record an instant HIT. | our stress test | At post, the mark must sit strictly between the stop and the target, and the entry must be within 0.5% of the mark. |
 | `pool` could be any address, including a fake contract that reports any price, so hits could be farmed off-market. | our stress test | The pool must be registered on dreamDEX's MarginBank (`isPerpPoolRegistered`). |
-| A late resolve after expiry read the price whenever someone got around to it. | our stress test | Every call schedules a Somnia Reactivity callback at its own expiry, so the chain settles it at that moment. Anyone can still resolve if the callback did not land. |
+| A late resolve after expiry read the price whenever someone got around to it. | our stress test | Every call asks Somnia Reactivity for a callback at its own expiry. On testnet that callback was not observed to fire, so a keeper resolves expired calls within about 2 minutes, `claim` settles first, and anyone can resolve. |
 
 ## Rules at post
 
@@ -42,7 +42,7 @@ v3 made callers post a bond. An outside review found that the bond only punished
 | EXPIRED, price on the winning side of entry | whole bond back | nothing from the bond | expired, not a miss |
 | EXPIRED, price on the losing side of entry | `bond - forfeit` | `forfeit`, by covered share | expired loss (a miss) |
 | Any outcome, nobody took the call | whole bond back | nothing | as above |
-| Never resolved | the Reactivity callback settles it at expiry; if it failed, anyone can resolve, and `claim` resolves first | same | same |
+| Never resolved | the keeper resolves it within about 2 minutes; anyone can resolve, and `claim` resolves first | same | same |
 | Over-capacity fill | earns the dreamDEX fee (paid at fill; no contract can stop that) | not covered by the bond; the app blocks it | not counted |
 
 Hit rate is `hits / (hits + stops + expired losses)`, so the money and the leaderboard judge every outcome the same way.
@@ -54,7 +54,7 @@ Hit rate is `hits / (hits + stops + expired losses)`, so the money and the leade
 | Wide stop, far target, wait for expiry | The 10% stop cap, plus settlement at expiry |
 | Post a target the price has already passed | The mark must sit between the levels at post |
 | Point the call at a fake market | The MarginBank registry check |
-| Resolve late, at a moment that suits you | The expiry callback settles at expiry itself |
+| Resolve late, at a moment that suits you | The keeper settles expired calls within about 2 minutes; the window is small and disclosed |
 | Post a long and a short at once | One open call per caller per market |
 | Tiny capacity, then attract big followers | Over-capacity takes are not covered and the app blocks them; the fee on fills placed outside the app is a disclosed limit |
 | One-tick levels as a coin flip | The minimum 0.1% stop and reward-to-risk of at least 1 |

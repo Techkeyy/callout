@@ -14,7 +14,7 @@ interface IMarginBank {
     function isPerpPoolRegistered(address pool) external view returns (bool);
 }
 
-/// @title CallBook v4
+/// @title CallBook v4.1
 /// @notice Public, uneditable record of bonded trade calls on dreamDEX perps. A call's terms never
 ///         change after posting. Every terminal state is settled against the market's mark price:
 ///         HIT returns the bond, STOPPED pays it to takers, EXPIRED forfeits it in proportion to how
@@ -126,7 +126,7 @@ contract CallBook is SomniaEventHandler {
     uint256 public constant BOND_BPS = 200; // bond >= 2% of capacity
     /// @dev The builder fee is 10 bps of notional, so notional = fee * 1000.
     uint256 public constant FEE_TO_NOTIONAL = 1_000;
-    uint64 private constant SCHEDULE_GAS = 1_500_000;
+    uint64 private constant SCHEDULE_GAS = 2_000_000;
 
     bytes32 private constant BUILDER_FEE_CHARGED = keccak256("BuilderFeeCharged(address,address,address,uint256)");
     bytes32 private constant SCHEDULE = keccak256("Schedule(uint256)");
@@ -195,12 +195,18 @@ contract CallBook is SomniaEventHandler {
     }
 
     function _onEvent(address emitter, bytes32[] calldata topics, bytes calldata data) internal override {
-        if (tx.origin != address(this) || topics.length == 0) return;
+        if (topics.length == 0) return;
+        // Scheduled system events have no originating transaction, so they are not gated on tx.origin.
+        // That is safe: settling only happens when the rules allow and only once, so an extra or
+        // duplicate trigger (even from someone else's subscription) cannot change any outcome.
         if (emitter == PRECOMPILE && topics[0] == SCHEDULE && topics.length >= 2) {
             uint256 id = _scheduledCall[uint256(topics[1])];
             if (id != 0 && _results[id].outcome == Outcome.None) _settle(id, false);
             return;
         }
+        // Builder-fee takes ARE gated on tx.origin == this (our own subscription), so a second
+        // subscription delivering the same log cannot count a take twice.
+        if (tx.origin != address(this)) return;
         if (emitter != marginBank || topics.length < 4 || topics[0] != BUILDER_FEE_CHARGED || data.length < 32) return;
         address payer = address(uint160(uint256(topics[1])));
         uint256 id = openCallOf(address(uint160(uint256(topics[2]))), address(uint160(uint256(topics[3]))));
@@ -243,10 +249,10 @@ contract CallBook is SomniaEventHandler {
             emitter: PRECOMPILE,
             handlerContractAddress: address(this),
             handlerFunctionSelector: ISomniaEventHandler.onEvent.selector,
-            priorityFeePerGas: 0,
+            priorityFeePerGas: 1, // as in Somnia's schedule example
             maxFeePerGas: 20 gwei,
             gasLimit: SCHEDULE_GAS,
-            isGuaranteed: true,
+            isGuaranteed: false, // as SomniaExtensions.scheduleSubscriptionAtTimestamp builds it
             isCoalesced: false
         });
         (bool ok, bytes memory ret) = PRECOMPILE.call(abi.encodeCall(ISomniaReactivityPrecompile.subscribe, (d)));
