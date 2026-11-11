@@ -1,0 +1,40 @@
+name: ci
+# Runs every test a judge would want to see, on every push: the CallBook contract suite (Foundry)
+# and the web app's unit tests (vitest), plus a type check.
+on:
+  push:
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      # forge-std is not vendored in the repo; fetch the pinned release the project builds with.
+      - run: git clone --depth 1 --branch v1.17.0 https://github.com/foundry-rs/forge-std lib/forge-std
+      - run: forge --version
+      - run: forge build --sizes
+      - run: forge test -vv
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit
+      - run: npm test
