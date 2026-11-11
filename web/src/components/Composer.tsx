@@ -8,6 +8,7 @@ import { ageLabel, markAgeSec, STALE_PRICE_COPY } from "@/lib/mark";
 import { callBookAbi, DEFAULT_BOND_USDSO, DEFAULT_MIN_BOND, describeError, erc20Abi, getCallBookAddress, NOTE_MAX } from "@/lib/callbook";
 import { DREAMDEX_APP_URL } from "@/lib/dex";
 import { publicClient, readMinBond } from "@/lib/calls";
+import { withRetry } from "@/lib/take";
 import { txUrl } from "@/lib/chain";
 import { alignToTick, displayDecimals, formatDisplay, formatPrice, parsePrice, roundToTick, toNumber, validatePrices } from "@/lib/prices";
 import Ticket from "./Ticket";
@@ -139,14 +140,19 @@ export default function Composer() {
     if (!wc || !w.address) return;
     try {
       if (w.wrongChain) await w.switchChain();
-      if (bond === null || !bondToken) throw new Error("bond");
+      if (bond === null) throw new Error("bond");
+      // The page-load read can lose to a slow RPC; fetch the bond token now if it is missing.
+      const token =
+        bondToken ??
+        ((await withRetry(() => publicClient.readContract({ address: contract, abi: callBookAbi, functionName: "bondToken" }), 3)) as `0x${string}`);
+      if (!bondToken) setBondToken(token);
       // Step 1 (only when needed): allow CallBook to take the bond. Step 2: post the call.
-      const allowance = (await publicClient.readContract({ address: bondToken, abi: erc20Abi, functionName: "allowance", args: [w.address, contract] })) as bigint;
+      const allowance = (await withRetry(() => publicClient.readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [w.address!, contract] }), 3)) as bigint;
       if (allowance < bond) {
         setBusy("approve");
         const aArgs = [contract, bond] as const;
-        const aEst = await publicClient.estimateContractGas({ address: bondToken, abi: erc20Abi, functionName: "approve", args: aArgs, account: w.address });
-        const aHash = await wc.writeContract({ address: bondToken, abi: erc20Abi, functionName: "approve", args: aArgs, gas: aEst * 2n, account: w.address, chain: wc.chain });
+        const aEst = await publicClient.estimateContractGas({ address: token, abi: erc20Abi, functionName: "approve", args: aArgs, account: w.address });
+        const aHash = await wc.writeContract({ address: token, abi: erc20Abi, functionName: "approve", args: aArgs, gas: aEst * 2n, account: w.address, chain: wc.chain });
         setBusy("chain");
         const aRc = await publicClient.waitForTransactionReceipt({ hash: aHash });
         if (aRc.status !== "success") throw new Error("approve reverted");
@@ -178,6 +184,7 @@ export default function Composer() {
       }
       setPosted({ id, hash });
     } catch (e) {
+      console.error("post failed", e);
       const d = describeError(e);
       if (d.kind === "error") setErr(d.message);
     } finally {
