@@ -118,6 +118,44 @@ export function stopBeforeLiquidation(isLong: boolean, stop: bigint, liquidation
   return isLong ? liquidation < stop : liquidation > stop;
 }
 
+// ---------- resilient reads ----------
+
+/** Rejects when the promise takes longer than ms. The caller decides what to do about it. */
+export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("The request took too long.")), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
+/** Runs fn up to 1 + retries times, waiting delayMs between tries. Throws the last error. */
+export async function withRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 800): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      if (i < retries) await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw last;
+}
+
+/** The value of a settled read, or the previous value when it failed. */
+export function settledOr<T>(r: PromiseSettledResult<T>, prev: T): T {
+  return r.status === "fulfilled" ? r.value : prev;
+}
+
 // ---------- what blocks a take ----------
 
 export type BlockReason = "closed" | "expired" | "stopHit" | "targetHit" | "isCaller" | "wrongNetwork";

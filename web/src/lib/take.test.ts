@@ -13,6 +13,9 @@ import {
   pnlPercent,
   requiredMargin,
   stopSafeMargin,
+  settledOr,
+  withRetry,
+  withTimeout,
   marginForTake,
   stopBeforeLiquidation,
   tagCallId,
@@ -203,6 +206,37 @@ describe("margin that keeps the stop ahead of liquidation", () => {
     expect(stopBeforeLiquidation(false, 80000n * E18, 82000n * E18)).toBe(true);
     expect(stopBeforeLiquidation(false, 80000n * E18, 79000n * E18)).toBe(false);
     expect(stopBeforeLiquidation(true, 69920n * E18, null)).toBe(true);
+  });
+});
+
+describe("resilient reads", () => {
+  it("keeps the previous value when a read failed and takes the new one when it worked", () => {
+    const ok: PromiseSettledResult<number> = { status: "fulfilled", value: 7 };
+    const bad: PromiseSettledResult<number> = { status: "rejected", reason: new Error("slow") };
+    expect(settledOr(ok, 1)).toBe(7);
+    expect(settledOr(bad, 1)).toBe(1);
+    expect(settledOr(bad, null)).toBeNull();
+  });
+  it("one failed read does not hide the others", async () => {
+    const rs = await Promise.allSettled([Promise.resolve("readiness"), Promise.reject(new Error("getPosition timed out")), Promise.resolve("limit")]);
+    expect(rs.map((r) => settledOr(r as PromiseSettledResult<string | null>, null))).toEqual(["readiness", null, "limit"]);
+  });
+  it("retries a flaky read and gives up after the last try", async () => {
+    let n = 0;
+    const flaky = async () => {
+      n++;
+      if (n < 3) throw new Error("took too long");
+      return "ok";
+    };
+    expect(await withRetry(flaky, 2, 1)).toBe("ok");
+    expect(n).toBe(3);
+    let m = 0;
+    await expect(withRetry(async () => { m++; throw new Error("down"); }, 2, 1)).rejects.toThrow("down");
+    expect(m).toBe(3);
+  });
+  it("times out a read that never answers", async () => {
+    await expect(withTimeout(new Promise(() => {}), 20)).rejects.toThrow("too long");
+    expect(await withTimeout(Promise.resolve(5), 20)).toBe(5);
   });
 });
 

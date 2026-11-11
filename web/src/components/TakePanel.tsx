@@ -15,6 +15,9 @@ import {
   describeTakeError,
   CLAIM_REFUSED_COPY,
   MIN_STT_FOR_TAKE,
+  settledOr,
+  withRetry,
+  withTimeout,
   NEED_USDSO_COPY,
   marginPlan,
   notionalOf,
@@ -62,6 +65,8 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
   const [limit, setLimit] = useState<dex.SizeLimit | null>(null);
   const [imfBps, setImfBps] = useState<bigint | null>(null);
   const [mmBps, setMmBps] = useState<bigint | null>(null);
+  const [readFailed, setReadFailed] = useState(false);
+  const [legsFailed, setLegsFailed] = useState(false);
   const [liq, setLiq] = useState<dex.LiquidationRead | null>(null);
   const [preset, setPreset] = useState<number | "custom">(25);
   const [custom, setCustom] = useState("");
@@ -103,31 +108,46 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
   const refresh = useCallback(async () => {
     const c = ctx();
     if (!c) return;
-    try {
-      const mark = c.market.markPrice;
-      const [r, p, l, s, imf, mm] = await Promise.all([
-        dex.readReadiness({ ...c, builder: caller }),
-        dex.readPosition(c),
-        dex.readBracket(c).catch(() => null),
-        dex.readSizeLimit(c, isLong, crossingPrice(mark, c.market.tickSize, isLong)).catch(() => null),
-        dex.readImfBps(c),
-        dex.readMmBps(c),
-      ]);
-      setImfBps(imf);
-      setMmBps(mm);
-      setRd(r);
-      setPos(p);
-      setLegs(l);
-      setLimit(s);
-    } catch {
-      /* keep the last known state; the next refresh retries */
+    const mark = c.market.markPrice;
+    const read = <T,>(fn: () => Promise<T>) => withRetry(() => withTimeout(fn(), 15000), 2, 800);
+    // Every read stands alone: one slow or failed read must not hide the others.
+    const [r, p, l, s, imf, mm] = await Promise.allSettled([
+      read(() => dex.readReadiness({ ...c, builder: caller })),
+      read(() => dex.readPosition(c)),
+      read(() => dex.readBracket(c)),
+      read(() => dex.readSizeLimit(c, isLong, crossingPrice(mark, c.market.tickSize, isLong))),
+      read(() => dex.readImfBps(c)),
+      read(() => dex.readMmBps(c)),
+    ]);
+    if (r.status === "fulfilled") {
+      setRd(r.value);
+      setReadFailed(false);
+    } else {
+      setReadFailed(true);
     }
+    // A failed position read keeps the last known position; it never blocks the steps.
+    setPos((prev) => settledOr(p, prev));
+    setLegs((prev) => settledOr(l, prev));
+    setLegsFailed(l.status === "rejected");
+    setLimit((prev) => settledOr(s, prev));
+    setImfBps((prev) => settledOr(imf, prev));
+    setMmBps((prev) => settledOr(mm, prev));
   }, [ctx, caller, isLong]);
+
+  // While the account cannot be read, keep trying every 5 seconds.
+  useEffect(() => {
+    if (!readFailed || !w.address) return;
+    const t = setInterval(() => {
+      refresh();
+    }, 5000);
+    return () => clearInterval(t);
+  }, [readFailed, w.address, refresh]);
 
   useEffect(() => {
     setRd(null);
     setPos(null);
     setLegs(null);
+    setReadFailed(false);
     if (w.address && pool) refresh();
   }, [w.address, pool, refresh]);
 
@@ -284,7 +304,7 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
           </div>
           <div>
             <dt className="dist-k">Exits</dt>
-            <dd className="dist-v" style={{ margin: 0 }}>{legs === null ? "Checking..." : bracketOk ? "Stop and target are set" : "Not set"}</dd>
+            <dd className="dist-v" style={{ margin: 0 }}>{legs === null ? (legsFailed ? "Could not read yet. Retrying..." : "Checking...") : bracketOk ? "Stop and target are set" : "Not set"}</dd>
           </div>
         </dl>
         {msg && <p className={`notice ${msg.tone === "warn" ? "is-warn" : msg.tone === "ok" ? "is-ok" : ""}`} style={{ marginTop: 12 }} role="status">{msg.text}</p>}
@@ -343,7 +363,17 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
               {w.noWallet && <p className="notice is-warn" role="status">No wallet found. Install one, then click again.</p>}
             </>
           )}
-          {w.address && !rd && <div className="skeleton" style={{ height: 52 }} aria-label="Checking your account" />}
+          {w.address && !rd && !readFailed && <div className="skeleton" style={{ height: 52 }} aria-label="Checking your account" />}
+          {w.address && !rd && readFailed && (
+            <>
+              <p className="notice is-warn" role="alert">
+                Could not read your account from the network. Retrying...
+              </p>
+              <button className="btn" onClick={() => refresh()}>
+                Retry
+              </button>
+            </>
+          )}
 
           {rd && step === "gas" && (
             <>
@@ -450,6 +480,7 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
                   {limit.limitedBy === "voucherBlocked" ? "Practice USDso cannot be used on this market. Deposit real test USDso instead." : "This size cannot be placed right now. Try a smaller size."}
                 </p>
               )}
+              {qty === 0n && <p className="notice is-warn">Enter a size in dollars to continue.</p>}
               <p className="hint">Your wallet will ask twice: first to open the position, then to set the stop at {formatDisplay(stop, dp)} and the target at {formatDisplay(target, dp)}.</p>
               <button className="btn btn-primary btn-wide" onClick={doTake} disabled={busy !== null || qty === 0n || stopUnsafe || (limit !== null && !limit.placeable)}>
                 {busy === "take" || busy === "arm" ? "Waiting for your wallet..." : "Take this call"}
