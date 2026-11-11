@@ -24,6 +24,7 @@ import {
   unrealizedPnl,
   type SizeRules,
 } from "./take.ts";
+import { classifyReadError, NOT_CONNECTED_COPY, READ_RETRIES, UNREACHABLE_COPY } from "./readstate.ts";
 import { ageLabel, isPriceUsable, markAgeSec, parseLiveState, toSeconds } from "./mark.ts";
 import { parseMarketRow } from "./useMarkets.ts";
 
@@ -287,6 +288,28 @@ describe("live mark parsing and staleness", () => {
     expect(parseMarketRow(row)?.markOk).toBe(true);
     expect(parseMarketRow({ ...row, markOk: undefined })?.markOk).toBe(false);
     expect(parseMarketRow({ ...row, markPrice: "null" })).toBeNull();
+  });
+});
+
+describe("read failure classification", () => {
+  it("calls a missing call missing, and everything else an error", () => {
+    expect(classifyReadError(new Error('The contract function "getCall" reverted with the following reason: NoSuchCall()'))).toBe("missing");
+    expect(classifyReadError({ shortMessage: "reverted: NoSuchCall" })).toBe("missing");
+    expect(classifyReadError(new Error("The request took too long."))).toBe("error");
+    expect(classifyReadError(new Error('{"code":-32603,"message":"node not ready"}'))).toBe("error");
+    expect(classifyReadError(undefined)).toBe("error");
+  });
+  it("never reports a network failure as not configured", () => {
+    // not configured is decided by a missing address before any read; a failed read is always "error"
+    expect(classifyReadError(new Error("fetch failed"))).toBe("error");
+    expect(UNREACHABLE_COPY).toContain("Your calls are safe on chain");
+    expect(UNREACHABLE_COPY).not.toContain("not been connected");
+    expect(NOT_CONNECTED_COPY).toContain("not been connected");
+  });
+  it("retries a read that fails twice, then reads it", async () => {
+    let n = 0;
+    const v = await withRetry(async () => { n++; if (n < 3) throw new Error("node not ready"); return [1n]; }, READ_RETRIES, 1);
+    expect(v).toEqual([1n]);
   });
 });
 

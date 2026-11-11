@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function OgImage({ params }: { params: Promise<{ id: string }> }) {
   const { id: raw } = await params;
   const id = parseCallId(raw);
-  const r = id ? await readCall(id) : null;
+  const r = id ? await readCall(id, { retries: 0, timeoutMs: 6000 }) : null;
   const ok = r && r.status === "ok" ? r.call : null;
   let market = displayName("PERP");
   let dp = 2;

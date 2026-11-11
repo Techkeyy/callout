@@ -11,7 +11,7 @@ import * as dex from "@/lib/dex";
 interface Props {
   address: `0x${string}`;
   /** Sum of getTakes(id).fees over the wallet's calls, from the on-chain ledger. */
-  earned: string;
+  earned: string | null;
   takers: number;
   fills: number;
 }
@@ -69,9 +69,9 @@ export default function Earnings({ address, earned, takers, fills }: Props) {
       <dl className="earn" style={{ marginTop: 12 }}>
         <div>
           <dt>Earned from takes</dt>
-          <dd className="num">{formatDisplay(BigInt(earned), 4)} USDso</dd>
+          <dd className="num">{earned === null ? "Unavailable right now" : `${formatDisplay(BigInt(earned), 4)} USDso`}</dd>
           <dd className="hint" style={{ fontSize: "var(--t-14)", fontWeight: 400 }}>
-            {takers} {takers === 1 ? "taker" : "takers"}, {fills} {fills === 1 ? "fill" : "fills"}. Counted on chain.
+            {earned === null ? "Refresh in a moment." : `${takers} ${takers === 1 ? "taker" : "takers"}, ${fills} ${fills === 1 ? "fill" : "fills"}. Counted on chain.`}
           </dd>
         </div>
         {mine && (
