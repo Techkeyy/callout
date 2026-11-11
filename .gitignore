@@ -8,3 +8,4 @@ spike/.env
 contracts/lib/forge-std/
 spike/node_modules/
 .claude/
+launch-video/
