@@ -14,7 +14,7 @@ export interface ShareCall {
 
 export const X_INTENT = "https://x.com/intent/post";
 /** The owner's X account. Change this one constant. */
-export const X_PROFILE_URL = "https://x.com";
+export const X_PROFILE_URL = "https://x.com/Praise_prodigyy";
 export const GITHUB_URL = "https://github.com/Techkeyy/callout";
 
 /** "i just called long btc-perp at 73,741. stop 72,266, target 76,690. 5 usdso bond says i'm right. take it on callout:" */
