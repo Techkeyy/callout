@@ -13,12 +13,15 @@ import {
   crossingPrice,
   deriveStep,
   describeTakeError,
+  CLAIM_REFUSED_COPY,
   MIN_STT_FOR_TAKE,
+  NEED_USDSO_COPY,
   marginPlan,
   notionalOf,
   notionalToQuantity,
   pnlPercent,
-  requiredMargin,
+  marginForTake,
+  stopBeforeLiquidation,
   STEP_ORDER,
   unrealizedPnl,
   type Step,
@@ -58,6 +61,8 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
   const [legs, setLegs] = useState<dex.BracketLeg[] | null>(null);
   const [limit, setLimit] = useState<dex.SizeLimit | null>(null);
   const [imfBps, setImfBps] = useState<bigint | null>(null);
+  const [mmBps, setMmBps] = useState<bigint | null>(null);
+  const [liq, setLiq] = useState<dex.LiquidationRead | null>(null);
   const [preset, setPreset] = useState<number | "custom">(25);
   const [custom, setCustom] = useState("");
   const [busy, setBusy] = useState<Busy>(null);
@@ -87,7 +92,7 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
   const desiredNotional = BigInt(Math.round(notionalUsd * 100)) * (E18 / 100n);
   // Margin is judged on the size the user WANTS. The chain's max size is 0 for an account with no margin, so it must not shrink this.
   const desiredQty = market && baseRules && notionalUsd > 0 ? notionalToQuantity(desiredNotional, market.markPrice, baseRules) : 0n;
-  const marginNeeded = market && desiredQty > 0n ? requiredMargin(notionalOf(desiredQty, market.markPrice, market.baseDecimals), imfBps ?? undefined) : 0n;
+  const marginNeeded = market && desiredQty > 0n ? marginForTake(notionalOf(desiredQty, market.markPrice, market.baseDecimals), imfBps ?? undefined, market.markPrice, stop, mmBps ?? undefined) : 0n;
   // Only the order itself is clamped to what the chain says is placeable.
   const qty =
     market && baseRules && desiredQty > 0n && limit?.maxQuantity && limit.maxQuantity > 0n
@@ -100,14 +105,16 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
     if (!c) return;
     try {
       const mark = c.market.markPrice;
-      const [r, p, l, s, imf] = await Promise.all([
+      const [r, p, l, s, imf, mm] = await Promise.all([
         dex.readReadiness({ ...c, builder: caller }),
         dex.readPosition(c),
         dex.readBracket(c).catch(() => null),
         dex.readSizeLimit(c, isLong, crossingPrice(mark, c.market.tickSize, isLong)).catch(() => null),
         dex.readImfBps(c),
+        dex.readMmBps(c),
       ]);
       setImfBps(imf);
+      setMmBps(mm);
       setRd(r);
       setPos(p);
       setLegs(l);
@@ -143,6 +150,25 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
     hasPosition,
   });
 
+  // Once the margin is in, ask the chain where this size would be liquidated. Hidden if the preview is unavailable.
+  const markForLiq = market?.markPrice ?? 0n;
+  useEffect(() => {
+    if (step !== "take" || qty === 0n || !market) {
+      setLiq(null);
+      return;
+    }
+    const c = ctx();
+    if (!c) return;
+    let alive = true;
+    dex.previewLiquidation(c, { isLong, quantity: qty, price: crossingPrice(markForLiq, market.tickSize, isLong) }).then((r) => alive && setLiq(r));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, qty, isLong, rd?.margin]);
+  const liqPrice = liq && liq.ok ? liq.price : null;
+  const stopUnsafe = liq !== null && liq.ok && !stopBeforeLiquidation(isLong, stop, liq.price);
+
   async function run(kind: Exclude<Busy, null>, fn: (c: dex.Ctx) => Promise<void>) {
     const c = ctx();
     if (!c) return;
@@ -169,7 +195,13 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
     });
   const doVoucher = () =>
     run("voucher", async (c) => {
-      await dex.claimVoucher(c);
+      try {
+        await dex.claimVoucher(c);
+      } catch (e) {
+        const d = describeTakeError(e);
+        if (d.kind === "rejected") throw e;
+        throw new Error(CLAIM_REFUSED_COPY, { cause: "claim" });
+      }
       setMsg({ tone: "ok", text: "Practice USDso added to your margin." });
     });
   const doApprove = () =>
@@ -349,7 +381,7 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
               )}
               {plan === "external" && (
                 <>
-                  <p className="hint">You have no USDso to deposit. Get test USDso on dreamDEX, then check again.</p>
+                  <p className="hint">{NEED_USDSO_COPY}</p>
                   <div className="actions">
                     <a className="btn btn-primary" href={dex.DREAMDEX_APP_URL} target="_blank" rel="noopener noreferrer">Open dreamDEX</a>
                     <button className="btn" onClick={() => run("check", async () => {})} disabled={busy !== null}>Check again</button>
@@ -402,6 +434,16 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
                   <dd className="dist-v num" style={{ margin: 0 }}>about ${formatDisplay(marginNeeded, 2)}</dd>
                 </div>
               </dl>
+              {liq && liq.ok && liqPrice !== null && !stopUnsafe && (
+                <p className="hint num">
+                  Liquidation price about {formatDisplay(liqPrice, dp)} (your stop at {formatDisplay(stop, dp)} triggers first).
+                </p>
+              )}
+              {stopUnsafe && liqPrice !== null && (
+                <p className="notice is-warn" role="alert">
+                  At this size you would be liquidated at about {formatDisplay(liqPrice, dp)}, before your stop at {formatDisplay(stop, dp)} triggers. Add about ${formatDisplay(marginNeeded > rd.margin ? marginNeeded - rd.margin : marginNeeded / 4n, 2)} more margin, or pick a smaller size.
+                </p>
+              )}
               <p className="hint">The caller earns 0.1% of this trade (${formatDisplay(callerFee(qtyNotional), 2)}). It is the only fee.</p>
               {limit && !limit.placeable && (
                 <p className="notice is-warn">
@@ -409,7 +451,7 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
                 </p>
               )}
               <p className="hint">Your wallet will ask twice: first to open the position, then to set the stop at {formatDisplay(stop, dp)} and the target at {formatDisplay(target, dp)}.</p>
-              <button className="btn btn-primary btn-wide" onClick={doTake} disabled={busy !== null || qty === 0n || (limit !== null && !limit.placeable)}>
+              <button className="btn btn-primary btn-wide" onClick={doTake} disabled={busy !== null || qty === 0n || stopUnsafe || (limit !== null && !limit.placeable)}>
                 {busy === "take" || busy === "arm" ? "Waiting for your wallet..." : "Take this call"}
               </button>
             </>

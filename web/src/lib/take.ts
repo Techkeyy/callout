@@ -92,6 +92,32 @@ export function requiredMargin(notional: bigint, imfBps: bigint = DEFAULT_IMF_BP
   return base + base / 20n;
 }
 
+export const DEFAULT_MM_BPS = 125n; // 1.25%, used only when the maintenance margin cannot be read
+
+/**
+ * Margin that keeps the liquidation price beyond the call stop: notional x (distance to stop + maintenance margin + 2%).
+ * The distance is measured from the live mark, which is where the position enters.
+ */
+export function stopSafeMargin(notional: bigint, mark: bigint, stop: bigint, mmBps: bigint = DEFAULT_MM_BPS): bigint {
+  if (mark <= 0n) return 0n;
+  const dist = mark > stop ? mark - stop : stop - mark;
+  const distBps = (dist * 10000n + mark - 1n) / mark;
+  return (notional * (distBps + mmBps + 200n) + 9999n) / 10000n;
+}
+
+/** What a take must lock: the larger of the initial-margin requirement and the stop-safe amount. */
+export function marginForTake(notional: bigint, imfBps: bigint | undefined, mark: bigint, stop: bigint, mmBps?: bigint): bigint {
+  const a = requiredMargin(notional, imfBps);
+  const b = stopSafeMargin(notional, mark, stop, mmBps);
+  return a > b ? a : b;
+}
+
+/** True when the call stop triggers before the position would be liquidated. A null price means no liquidation. */
+export function stopBeforeLiquidation(isLong: boolean, stop: bigint, liquidation: bigint | null): boolean {
+  if (liquidation === null) return true;
+  return isLong ? liquidation < stop : liquidation > stop;
+}
+
 // ---------- what blocks a take ----------
 
 export type BlockReason = "closed" | "expired" | "stopHit" | "targetHit" | "isCaller" | "wrongNetwork";
@@ -150,6 +176,15 @@ export function deriveStep(i: {
   return "take";
 }
 
+/** The voucher is only offered when the chain says the wallet is eligible AND a simulated claim succeeds. */
+export function voucherUsable(eligible: boolean, claimSimulates: boolean): boolean {
+  return eligible && claimSimulates;
+}
+
+export const CLAIM_REFUSED_COPY =
+  "dreamDEX did not accept the practice USDso claim for this wallet. Nothing changed. Use the dreamDEX testnet app to get USDso.";
+export const NEED_USDSO_COPY = "You need some testnet USDso. Get practice USDso in the dreamDEX testnet app (Perps Arena), then come back.";
+
 /** What to offer when margin is short. */
 export type MarginPlan = "deposit" | "voucher" | "external";
 
@@ -165,6 +200,7 @@ export type TakeError = { kind: "rejected" } | { kind: "error"; message: string 
 
 export function describeTakeError(err: unknown): TakeError {
   const e = err as { shortMessage?: string; message?: string; name?: string; code?: number; cause?: unknown };
+  if (e?.message === CLAIM_REFUSED_COPY) return { kind: "error", message: CLAIM_REFUSED_COPY };
   let text = `${e?.shortMessage ?? ""} ${e?.message ?? ""}`;
   let c: unknown = e?.cause;
   let rejected = e?.code === 4001 || e?.name === "UserRejectedRequestError";

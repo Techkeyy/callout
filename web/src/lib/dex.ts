@@ -4,7 +4,7 @@ import { SomniaMarkets, SOMNIA_HIDEKI_TESTNET_ADDRESSES, perpPoolWriteAbi } from
 import type { PublicClient, WalletClient } from "viem";
 import { callBookAbi } from "./callbook.abi.ts";
 import { INDEXER_URL, WS_URL, somniaTokyo } from "./chain.ts";
-import { cardTag, crossingPrice, FEE_BPS_TIMES_1K, IOC, U64_MAX, ZERO_ADDRESS } from "./take.ts";
+import { voucherUsable, cardTag, crossingPrice, FEE_BPS_TIMES_1K, IOC, U64_MAX, ZERO_ADDRESS } from "./take.ts";
 
 export const OPERATOR_REGISTRY = "0x6B2FbfeD328FF5F20C0BE7D3C3437613aFFE8D3a" as const;
 export const STT_FAUCET_URL = "https://explorer.testnet.somnia.network/tokyo/faucet";
@@ -57,6 +57,7 @@ export interface Readiness {
   margin: bigint;
   withdrawable: bigint;
   builderApproval: bigint;
+  /** Eligible per the chain AND a simulated claim from this wallet succeeds. */
   voucherEligible: boolean;
   voucherGrant: bigint;
 }
@@ -71,15 +72,27 @@ export async function readReadiness(c: Pick<Ctx, "fx" | "pub" | "account" | "mar
     fx.client.getPerpVoucherEligibility(market.marginBank, account).catch(() => ({ eligible: false as const })),
   ]);
   const v = voucher as { eligible: boolean; grantAmount?: bigint };
+  const simulates = v.eligible === true ? await claimSimulates(c) : false;
   return {
     stt,
     walletUsdso: walletUsdso as bigint,
     margin: acct.unlockedCollateralBalance,
     withdrawable: acct.withdrawable,
     builderApproval: approval as bigint,
-    voucherEligible: v.eligible === true,
+    voucherEligible: voucherUsable(v.eligible === true, simulates),
     voucherGrant: v.grantAmount ?? 0n,
   };
+}
+
+/** Dry-run the voucher claim from this wallet. Some wallets are reported eligible but the claim still reverts. */
+async function claimSimulates(c: { fx: SomniaMarkets; pub: PublicClient; account: Addr; market: DexMarket }): Promise<boolean> {
+  try {
+    const call = await c.fx.trader.buildClaimPerpVoucher({ marginBank: c.market.marginBank });
+    await c.pub.call({ account: c.account, to: call.to, data: call.data, value: call.value });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ---------- setup writes ----------
@@ -126,6 +139,35 @@ export async function readImfBps(c: Pick<Ctx, "fx" | "market">): Promise<bigint 
     return await c.fx.client.getEffectiveImfBps(c.market.pool);
   } catch {
     return null;
+  }
+}
+
+/** The maintenance margin of the market in bps. Null when it cannot be read. */
+export async function readMmBps(c: Pick<Ctx, "fx" | "market">): Promise<bigint | null> {
+  try {
+    return (await c.fx.client.getPerpRiskParams(c.market.pool)).maintenanceMarginBps;
+  } catch {
+    return null;
+  }
+}
+
+export type LiquidationRead = { ok: true; price: bigint | null } | { ok: false };
+
+/** Where this order would put the liquidation price, given the margin the account has right now. */
+export async function previewLiquidation(c: Pick<Ctx, "fx" | "account" | "market">, a: { isLong: boolean; quantity: bigint; price: bigint }): Promise<LiquidationRead> {
+  try {
+    const r = await c.fx.client.previewPerpLiquidationPrice({
+      pool: c.market.pool,
+      marginBank: c.market.marginBank,
+      account: c.account,
+      isBid: a.isLong,
+      quantity: a.quantity,
+      price: a.price,
+    });
+    if (!r.priceable) return { ok: false };
+    return { ok: true, price: r.projectedLiquidationPrice };
+  } catch {
+    return { ok: false };
   }
 }
 

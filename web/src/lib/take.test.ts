@@ -12,7 +12,12 @@ import {
   notionalToQuantity,
   pnlPercent,
   requiredMargin,
+  stopSafeMargin,
+  marginForTake,
+  stopBeforeLiquidation,
   tagCallId,
+  voucherUsable,
+  CLAIM_REFUSED_COPY,
   unrealizedPnl,
   type SizeRules,
 } from "./take.ts";
@@ -149,6 +154,55 @@ describe("fresh wallet with no margin", () => {
   });
   it("offers the voucher to a fresh voucher-eligible wallet", () => {
     expect(marginPlan({ walletUsdso: 0n, shortfall: requiredMargin(25n * E18), voucherEligible: true })).toBe("voucher");
+  });
+});
+
+describe("voucher that the chain calls eligible but reverts", () => {
+  it("is not offered when the simulated claim fails", () => {
+    expect(voucherUsable(true, false)).toBe(false);
+    expect(voucherUsable(true, true)).toBe(true);
+    expect(voucherUsable(false, true)).toBe(false);
+  });
+  it("falls back to deposit when the wallet has USDso, else to the external route", () => {
+    const shortfall = 6n * E18;
+    expect(marginPlan({ walletUsdso: 50n * E18, shortfall, voucherEligible: voucherUsable(true, false) })).toBe("deposit");
+    expect(marginPlan({ walletUsdso: 0n, shortfall, voucherEligible: voucherUsable(true, false) })).toBe("external");
+  });
+  it("shows plain copy when a claim still reverts", () => {
+    expect(describeTakeError(new Error(CLAIM_REFUSED_COPY))).toEqual({ kind: "error", message: CLAIM_REFUSED_COPY });
+  });
+});
+
+describe("margin that keeps the stop ahead of liquidation", () => {
+  const notional = 25n * E18;
+  const mark = 73600n * E18;
+  it("a long with the stop 5% away needs at least 6.25% of notional", () => {
+    const stop = (mark * 95n) / 100n;
+    const m = stopSafeMargin(notional, mark, stop, 125n);
+    expect(m).toBeGreaterThanOrEqual((notional * 625n) / 10000n);
+    expect(m).toBe((notional * 825n) / 10000n); // 5% + 1.25% + 2%
+  });
+  it("a short is mirrored: the stop 5% above needs the same", () => {
+    const stop = (mark * 105n) / 100n;
+    const m = stopSafeMargin(notional, mark, stop, 125n);
+    expect(m).toBeGreaterThanOrEqual((notional * 625n) / 10000n);
+  });
+  it("beats the max-leverage initial margin and is never lower than it", () => {
+    const stop = (mark * 95n) / 100n;
+    const need = marginForTake(notional, 280n, mark, stop, 125n);
+    expect(need).toBeGreaterThan(requiredMargin(notional, 280n) * 2n);
+    expect(marginForTake(notional, 2000n, mark, (mark * 99n) / 100n, 125n)).toBe(requiredMargin(notional, 2000n));
+  });
+  it("defaults the maintenance margin to 1.25%", () => {
+    const stop = (mark * 95n) / 100n;
+    expect(stopSafeMargin(notional, mark, stop)).toBe(stopSafeMargin(notional, mark, stop, 125n));
+  });
+  it("checks the stop is hit before liquidation, per side", () => {
+    expect(stopBeforeLiquidation(true, 69920n * E18, 68000n * E18)).toBe(true);
+    expect(stopBeforeLiquidation(true, 69920n * E18, 71000n * E18)).toBe(false);
+    expect(stopBeforeLiquidation(false, 80000n * E18, 82000n * E18)).toBe(true);
+    expect(stopBeforeLiquidation(false, 80000n * E18, 79000n * E18)).toBe(false);
+    expect(stopBeforeLiquidation(true, 69920n * E18, null)).toBe(true);
   });
 });
 
