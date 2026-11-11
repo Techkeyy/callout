@@ -44,7 +44,7 @@ export default async function BoardPage() {
             <div className="empty">
               <h2>No resolved calls yet.</h2>
               <p>Once a call hits its target, stops out or expires, its caller appears here. Post a call, or take one.</p>
-              <Link className="btn btn-primary" href="/">
+              <Link className="btn btn-primary" href="/app">
                 Write a call
               </Link>
             </div>

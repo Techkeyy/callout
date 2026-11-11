@@ -1,4 +1,5 @@
 "use client";
+import { useToast } from "./Toast";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits } from "viem";
 import { useWallet } from "@/lib/wallet";
@@ -45,6 +46,8 @@ interface Props {
   remaining: bigint | null;
   /** Called after a take or a close so the card's counters refresh. */
   onChanged: () => void;
+  /** Called once after a take went through, so the page can offer to share it. */
+  onTaken?: () => void;
 }
 
 const PRESETS = [25, 50, 100];
@@ -60,7 +63,16 @@ function trimUnits(v: bigint, d: number, max = 8): string {
   return fr ? `${i}.${fr}` : i;
 }
 
-export default function TakePanel({ callId, caller, isLong, entry, stop, target, status, market, remaining, onChanged }: Props) {
+const DONE: Record<string, string> = {
+  deposit: "Margin added.",
+  voucher: "Practice USDso added to your margin.",
+  approve: "Caller approved.",
+  take: "You took the call.",
+  arm: "Stop and target are set.",
+  close: "Position closed.",
+};
+
+export default function TakePanel({ callId, caller, isLong, entry, stop, target, status, market, remaining, onChanged, onTaken }: Props) {
   const w = useWallet();
   const [rd, setRd] = useState<dex.Readiness | null>(null);
   const [pos, setPos] = useState<dex.PositionRead | null>(null);
@@ -73,6 +85,7 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
   const [liq, setLiq] = useState<dex.LiquidationRead | null>(null);
   const [preset, setPreset] = useState<number | "custom">(25);
   const [custom, setCustom] = useState("");
+  const toast = useToast();
   const [busy, setBusy] = useState<Busy>(null);
   const [msg, setMsg] = useState<{ tone: "info" | "warn" | "ok"; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -197,16 +210,28 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
   const liqPrice = liq && liq.ok ? liq.price : null;
   const stopUnsafe = liq !== null && liq.ok && !stopBeforeLiquidation(isLong, stop, liq.price);
 
+  const PENDING: Record<string, string> = {
+    deposit: "Adding margin. Confirm in your wallet.",
+    voucher: "Claiming practice USDso. Confirm in your wallet.",
+    approve: "Approving the caller. Confirm in your wallet.",
+    take: "Taking the call. Confirm in your wallet.",
+    arm: "Setting your stop and target. Confirm in your wallet.",
+    close: "Closing your position. Confirm in your wallet.",
+  };
   async function run(kind: Exclude<Busy, null>, fn: (c: dex.Ctx) => Promise<void>) {
     const c = ctx();
     if (!c) return;
     setMsg(null);
     setBusy(kind);
+    const tid = toast.show({ tone: "pending", text: PENDING[kind] ?? "Confirm in your wallet." });
     try {
       if (w.wrongChain) await w.switchChain();
       await fn(c);
+      toast.update(tid, { tone: "ok", text: DONE[kind] ?? "Done." });
     } catch (e) {
       const d = describeTakeError(e);
+      if (d.kind === "rejected") toast.dismiss(tid);
+      else toast.update(tid, { tone: "warn", text: d.message });
       setMsg(d.kind === "rejected" ? { tone: "info", text: "Nothing changed." } : { tone: "warn", text: d.message });
     } finally {
       setBusy(null);
@@ -245,6 +270,7 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
       try {
         await dex.armBracket(c, { isLong, stop, target });
         setMsg({ tone: "ok", text: "You're in. Your stop and target are set." });
+        onTaken?.();
       } catch (e) {
         const d = describeTakeError(e);
         setMsg(

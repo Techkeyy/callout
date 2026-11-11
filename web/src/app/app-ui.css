@@ -1,0 +1,431 @@
+/* Shared app chrome added with the landing page: header nav, tabs, next-step hint, toasts, share modal, chart, explore feed. Tokens come from globals.css. */
+
+/* ---------- skip link, header nav ---------- */
+.skip {
+  position: absolute;
+  left: var(--s-4);
+  top: -80px;
+  z-index: 100;
+  background: var(--ink);
+  color: var(--paper);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  font-weight: 600;
+}
+.skip:focus {
+  top: var(--s-2);
+}
+.topbar-in {
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+.topnav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+.navlink[aria-current="page"] {
+  background: var(--paper-deep);
+  box-shadow: inset 0 -2px 0 var(--signal);
+}
+@media (max-width: 719px) {
+  .topbar-in {
+    gap: var(--s-2);
+    padding-block: var(--s-2);
+  }
+  .nav-spacer {
+    display: none;
+  }
+  .topbar-in .menu-wrap {
+    margin-left: auto;
+  }
+  .topnav {
+    order: 3;
+    width: 100%;
+    gap: 0;
+  }
+  .navlink {
+    padding-inline: var(--s-3);
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+.btn-small.btn-primary {
+  min-height: 44px;
+}
+
+/* ---------- app tabs ---------- */
+.tabs {
+  display: flex;
+  gap: var(--s-2);
+  padding-top: var(--s-4);
+  border-bottom: 1.5px solid var(--ink);
+}
+.tab {
+  appearance: none;
+  background: transparent;
+  border: 1.5px solid transparent;
+  border-bottom: 0;
+  font: inherit;
+  font-weight: 700;
+  font-size: var(--t-17);
+  padding: 0 var(--s-5);
+  min-height: 48px;
+  cursor: pointer;
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  color: var(--ink-2);
+  margin-bottom: -1.5px;
+}
+.tab:hover {
+  background: var(--paper-deep);
+}
+.tab[aria-selected="true"] {
+  background: var(--slip);
+  border-color: var(--ink);
+  color: var(--ink);
+  box-shadow: inset 0 3px 0 var(--signal);
+}
+
+/* ---------- next step hint ---------- */
+.nextstep {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-2) var(--s-3);
+  margin: 0 0 var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  background: var(--slip);
+  border: 1.5px dashed var(--ink-3);
+  border-left: 4px solid var(--ink);
+  border-radius: var(--r-sm);
+  font-size: var(--t-15);
+}
+.nextstep.is-go {
+  border-style: solid;
+  border-color: var(--ink);
+  border-left: 4px solid var(--signal);
+}
+.nextstep-k {
+  font-size: var(--t-14);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--signal-ink);
+}
+.nextstep a {
+  font-weight: 600;
+}
+
+/* ---------- toasts ---------- */
+.toasts {
+  position: fixed;
+  z-index: 60;
+  right: var(--s-4);
+  bottom: var(--s-4);
+  left: var(--s-4);
+  display: grid;
+  gap: var(--s-2);
+  justify-items: end;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--s-3);
+  align-items: start;
+  width: min(100%, 420px);
+  background: var(--slip);
+  border: 1.5px solid var(--ink);
+  border-radius: var(--r-md);
+  padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4);
+  box-shadow: 0 4px 0 var(--ink);
+  animation: toast-in 0.25s var(--ease);
+}
+.toast.is-ok {
+  border-left: 6px solid var(--long);
+}
+.toast.is-warn {
+  border-left: 6px solid var(--signal);
+}
+.toast.is-pending {
+  border-left: 6px solid var(--ink);
+}
+.toast-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: var(--t-14);
+  line-height: 1;
+  margin-top: 1px;
+}
+.toast-text {
+  margin: 0;
+  font-size: var(--t-15);
+  overflow-wrap: anywhere;
+}
+.toast-text a {
+  font-weight: 600;
+}
+.toast-x {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 1.5rem;
+  line-height: 1;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  color: var(--ink-2);
+  margin: -6px -2px 0 0;
+}
+.toast-x:hover {
+  background: var(--paper-deep);
+}
+.toast-spin {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  border-right-color: transparent;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .toast-spin {
+    animation: none;
+  }
+}
+
+/* ---------- share modal ---------- */
+.modal-back {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(20, 20, 20, 0.55);
+  display: grid;
+  place-items: center;
+  padding: var(--s-4);
+  overflow-y: auto;
+}
+.modal {
+  width: min(100%, 520px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1.5px solid var(--ink);
+  border-radius: var(--r-lg);
+  padding: var(--s-5);
+  box-shadow: 0 6px 0 var(--ink);
+  display: grid;
+  gap: var(--s-3);
+}
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-3);
+}
+.modal-head h2 {
+  margin: 0;
+  font-size: var(--t-32);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.modal-ticket {
+  padding-block: var(--s-2) var(--s-3);
+}
+
+/* ---------- price chart ---------- */
+.chart-card {
+  background: var(--slip);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.chart-toggle {
+  appearance: none;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 var(--s-4);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-weight: 700;
+  font-size: var(--t-15);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+.chart-toggle:hover {
+  background: var(--paper-deep);
+}
+.chart-body {
+  padding: 0 var(--s-4) var(--s-4);
+}
+.chart-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--s-3);
+}
+.chip-small {
+  min-height: 36px;
+  padding: 0 var(--s-3);
+  min-width: 48px;
+}
+.chart-host {
+  width: 100%;
+  height: 280px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+@media (min-width: 900px) {
+  .call-chart .chart-host {
+    height: 380px;
+  }
+}
+/* On a phone the ticket comes first, then the chart, then the ladder. */
+@media (max-width: 899px) {
+  .call-grid > .stack:first-of-type {
+    order: 0;
+  }
+  .call-grid > .call-chart {
+    order: 1;
+  }
+  .call-grid > .stack:last-of-type {
+    order: 2;
+  }
+}
+@media (max-width: 520px) {
+  .chart-host {
+    height: 240px;
+  }
+}
+.chart-state {
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  padding: var(--s-6) var(--s-4);
+  display: grid;
+  gap: var(--s-3);
+  justify-items: start;
+}
+.chart-state p {
+  margin: 0;
+}
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+  list-style: none;
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  font-size: var(--t-14);
+  color: var(--ink-2);
+}
+.chart-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.chart-legend i {
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+}
+.chart-legend i.is-dashed {
+  height: 0;
+  border-top: 3px dashed currentColor;
+  background: none;
+}
+.chart-stats {
+  margin-top: var(--s-3);
+}
+
+/* ---------- explore feed ---------- */
+.xgrid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-4);
+}
+@media (min-width: 720px) {
+  .xgrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1040px) {
+  .xgrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.xcard {
+  display: grid;
+  gap: var(--s-1);
+  height: 100%;
+  align-content: start;
+  padding: var(--s-4) var(--s-5);
+  background: var(--slip);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--r-md);
+  text-decoration: none;
+  box-shadow: 0 3px 0 var(--line-strong);
+  transition: border-color 0.15s var(--ease), transform 0.15s var(--ease);
+}
+.xcard:hover {
+  border-color: var(--ink);
+  transform: translateY(-2px);
+}
+.xcard-top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+.xcard-market {
+  font-size: var(--t-22);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.xcard-left {
+  margin-left: auto;
+  font-size: var(--t-14);
+  color: var(--ink-2);
+}
+.xcard-meta {
+  margin: var(--s-2) 0 0;
+  font-size: var(--t-14);
+  color: var(--ink-3);
+}
+@media (prefers-reduced-motion: reduce) {
+  .xcard,
+  .lp-link {
+    transition: none;
+  }
+}

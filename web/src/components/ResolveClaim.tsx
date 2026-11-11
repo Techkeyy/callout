@@ -8,6 +8,7 @@ import { formatDisplay } from "@/lib/prices";
 import { claimCopy, deriveOutcome, resolveCopy, type Outcome } from "@/lib/outcome";
 import { STALE_PRICE_COPY } from "@/lib/mark";
 import type { ClientMarket } from "@/lib/useMarkets";
+import { useToast, type ToastApi } from "./Toast";
 
 type Msg = { tone: "info" | "warn" | "ok"; text: string; hash?: string };
 
@@ -25,17 +26,27 @@ function MsgLine({ m }: { m: Msg | null }) {
   );
 }
 
-/** Sends a CallBook write with the node's gas estimate padded 2x. Returns the tx hash. */
-async function send(fn: "resolve" | "claim", id: bigint, w: ReturnType<typeof useWallet>): Promise<`0x${string}`> {
+/** Sends a CallBook write with the node's gas estimate padded 2x, and reports each stage as a toast. Returns the tx hash. */
+async function send(fn: "resolve" | "claim", id: bigint, w: ReturnType<typeof useWallet>, toast: ToastApi, done: string): Promise<`0x${string}`> {
   const addr = getCallBookAddress();
   const wc = w.client();
   if (!addr || !wc || !w.address) throw new Error("no wallet");
-  if (w.wrongChain) await w.switchChain();
-  const est = await publicClient.estimateContractGas({ address: addr, abi: callBookAbi, functionName: fn, args: [id], account: w.address });
-  const hash = await wc.writeContract({ address: addr, abi: callBookAbi, functionName: fn, args: [id], gas: est * 2n, account: w.address, chain: wc.chain });
-  const rc = await publicClient.waitForTransactionReceipt({ hash });
-  if (rc.status !== "success") throw new Error("reverted");
-  return hash;
+  const tid = toast.show({ tone: "pending", text: "Confirm in your wallet." });
+  try {
+    if (w.wrongChain) await w.switchChain();
+    const est = await publicClient.estimateContractGas({ address: addr, abi: callBookAbi, functionName: fn, args: [id], account: w.address });
+    const hash = await wc.writeContract({ address: addr, abi: callBookAbi, functionName: fn, args: [id], gas: est * 2n, account: w.address, chain: wc.chain });
+    toast.update(tid, { text: "Submitted. Waiting for confirmation.", hash });
+    const rc = await publicClient.waitForTransactionReceipt({ hash });
+    if (rc.status !== "success") throw new Error("reverted");
+    toast.update(tid, { tone: "ok", text: done, hash });
+    return hash;
+  } catch (e) {
+    const d = describeError(e);
+    if (d.kind === "rejected") toast.dismiss(tid);
+    else toast.update(tid, { tone: "warn", text: d.message, hash: undefined });
+    throw e;
+  }
 }
 
 /** "Record the outcome": any wallet can write a crossed level or an expiry to the chain. */
@@ -50,6 +61,7 @@ export function ResolvePanel(p: {
   onDone: () => void;
 }) {
   const w = useWallet();
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg | null>(null);
   const priceOk = !!p.market && p.market.markOk;
@@ -60,7 +72,7 @@ export function ResolvePanel(p: {
     setBusy(true);
     setMsg(null);
     try {
-      const hash = await send("resolve", p.callId, w);
+      const hash = await send("resolve", p.callId, w, toast, "Outcome recorded on chain.");
       setMsg({ tone: "ok", text: "Recorded on chain.", hash });
       p.onDone();
     } catch (e) {
@@ -106,6 +118,7 @@ export function ClaimPanel(p: {
   onDone: () => void;
 }) {
   const w = useWallet();
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg | null>(null);
   const preCopy = p.outcome === "open" && p.settleable ? "This call is ready to settle. Claim records the outcome and pays out what you are owed, in one step." : null;
@@ -116,7 +129,7 @@ export function ClaimPanel(p: {
     setBusy(true);
     setMsg(null);
     try {
-      const hash = await send("claim", p.callId, w);
+      const hash = await send("claim", p.callId, w, toast, "Claimed. It is in your wallet.");
       setMsg({ tone: "ok", text: "Claimed. It is in your wallet.", hash });
       p.onDone();
     } catch (e) {
@@ -146,6 +159,7 @@ export function ClaimPanel(p: {
 /** A compact Claim button for a list row: sends claim(id) and reports the result inline. */
 export function ClaimButton(p: { callId: bigint; amount: bigint; onDone: () => void }) {
   const w = useWallet();
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg | null>(null);
 
@@ -153,7 +167,7 @@ export function ClaimButton(p: { callId: bigint; amount: bigint; onDone: () => v
     setBusy(true);
     setMsg(null);
     try {
-      const hash = await send("claim", p.callId, w);
+      const hash = await send("claim", p.callId, w, toast, "Claimed. It is in your wallet.");
       setMsg({ tone: "ok", text: "Claimed.", hash });
       p.onDone();
     } catch (e) {

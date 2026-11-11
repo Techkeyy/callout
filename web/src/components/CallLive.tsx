@@ -24,6 +24,11 @@ import { txUrl } from "@/lib/chain";
 import { callStatus } from "@/lib/time";
 import { displayDecimals, formatDisplay, ladderDistances, toNumber } from "@/lib/prices";
 import Ticket from "./Ticket";
+import PriceChartLazy from "./PriceChartLazy";
+import ShareButtons from "./ShareButtons";
+import NextStep from "./NextStep";
+import { useToast } from "./Toast";
+import { callShareText, cardUrl, hitShareText, takeShareText } from "@/lib/share";
 import Ladder from "./Ladder";
 
 interface Props {
@@ -31,6 +36,7 @@ interface Props {
   caller: string;
   pool: string;
   isLong: boolean;
+  postedAt: string;
   expiresAt: string;
   closedAt: string;
   entry: string;
@@ -47,6 +53,10 @@ interface Props {
 
 export default function CallLive(p: Props) {
   const w = useWallet();
+  const toast = useToast();
+  const [justTook, setJustTook] = useState(false);
+  const [origin, setOrigin] = useState(process.env.NEXT_PUBLIC_SITE_URL ?? "");
+  useEffect(() => setOrigin(window.location.origin), []);
   const { markets, stale } = useMarkets(4000, p.pool);
   const [now, setNow] = useState(p.serverNow);
   const [closedAt, setClosedAt] = useState(BigInt(p.closedAt));
@@ -130,22 +140,49 @@ export default function CallLive(p: Props) {
   const canClaimEarly = settleable && (isMine || (myCovered !== null && myCovered > 0n));
   const settlement = result ? settlementLine({ outcome, priceText: formatDisplay(BigInt(result.price), dp), forfeit: BigInt(result.forfeit), bond: BigInt(result.bond), covered }) : null;
 
+  const shareCall = { market: name, isLong: p.isLong, entry: formatDisplay(entry, dp), stop: formatDisplay(stop, dp), target: formatDisplay(target, dp), bond: result ? formatDisplay(BigInt(result.bond), BigInt(result.bond) % 10n ** 18n === 0n ? 0 : 2) : null };
+  const url = origin ? cardUrl(origin, p.id) : "";
+  const shareMode: "took" | "hit" | "call" = justTook ? "took" : outcome === "hit" && isMine ? "hit" : "call";
+  const shareHead = shareMode === "took" ? "You took this call. Share it?" : shareMode === "hit" ? "Share your hit" : "Share this call";
+  const shareBody = shareMode === "took" ? takeShareText(shareCall) : shareMode === "hit" ? hitShareText(shareCall) : callShareText(shareCall);
+  const hasClaim = resolved && claimable !== null && claimable > 0n;
+  const next = !w.address ? (
+    <>Connect your wallet to post or take.</>
+  ) : hasClaim ? (
+    <>{isMine ? "Claim your bond." : "Claim your share of the bond."}</>
+  ) : justTook ? (
+    <>Your stop and target are armed. Watch it here.</>
+  ) : shareMode === "hit" ? (
+    <>Share your hit.</>
+  ) : !resolved && status === "open" && !isMine ? (
+    <>Take this call below. Your stop and target are set for you.</>
+  ) : !resolved && status === "open" && isMine ? (
+    <>Share your call so others can take it.</>
+  ) : null;
+
   async function close() {
     const addr = getCallBookAddress();
     const wc = w.client();
     if (!addr || !wc || !w.address) return;
     setErr(null);
     setBusy(true);
+    const tid = toast.show({ tone: "pending", text: "Confirm in your wallet." });
     try {
       if (w.wrongChain) await w.switchChain();
+      toast.update(tid, { text: "Confirm in your wallet." });
       const hash = await wc.writeContract({ address: addr, abi: callBookAbi, functionName: "close", args: [BigInt(p.id)], account: w.address, chain: wc.chain });
+      toast.update(tid, { text: "Submitted. Waiting for confirmation.", hash });
       const rc = await publicClient.waitForTransactionReceipt({ hash });
       if (rc.status !== "success") throw new Error("reverted");
       setClosedAt(BigInt(Math.floor(Date.now() / 1000)));
       setCloseTx(hash);
+      toast.update(tid, { tone: "ok", text: "Call closed.", hash });
     } catch (e) {
       const d = describeError(e);
-      if (d.kind === "error") setErr(d.message);
+      if (d.kind === "error") {
+        setErr(d.message);
+        toast.update(tid, { tone: "warn", text: d.message });
+      } else toast.dismiss(tid);
     } finally {
       setBusy(false);
     }
@@ -153,7 +190,21 @@ export default function CallLive(p: Props) {
 
   return (
     <div className="call-grid">
+      <div className="call-chart">
+        <PriceChartLazy
+          pool={p.pool}
+          isLong={p.isLong}
+          entry={toNumber(entry)}
+          stop={toNumber(stop)}
+          target={toNumber(target)}
+          mark={mark}
+          dp={dp}
+          postedAt={Number(p.postedAt)}
+          resolved={result && outcome !== "open" ? { outcome, price: toNumber(BigInt(result.price)), at: Number(result.resolvedAt) } : null}
+        />
+      </div>
       <div className="stack">
+        {next && <NextStep tone={hasClaim ? "go" : "info"}>{next}</NextStep>}
         <Ticket id={BigInt(p.id)} market={name} isLong={p.isLong} entry={entry} stop={stop} target={target} dp={dp} note={p.note} caller={p.caller} status={status} secsLeft={secsLeft} outcome={outcome} bond={result ? BigInt(result.bond) : null} capacity={capacity} covered={covered} settlement={settlement} recordLine={recordLine(record)} />
         {!resolved && <ResolvePanel callId={BigInt(p.id)} isLong={p.isLong} stop={stop} target={target} expiresAt={Number(p.expiresAt)} nowSec={now} market={live} onDone={refreshResult} />}
         {(resolved || canClaimEarly) && <ClaimPanel callId={BigInt(p.id)} outcome={outcome} claimable={claimable} isCaller={isMine} settleable={canClaimEarly} onDone={() => { refreshResult(); refreshClaimable(); }} />}
@@ -168,7 +219,13 @@ export default function CallLive(p: Props) {
           market={live}
           remaining={remaining}
           onChanged={refreshTakes}
+          onTaken={() => setJustTook(true)}
         />
+        <div className="panel">
+          <h2>{shareHead}</h2>
+          <p className="hint" style={{ marginBottom: 12 }}>{shareBody} {url}</p>
+          {url ? <ShareButtons text={shareBody} url={url} primary={justTook || shareMode === "hit"} /> : <div className="skeleton" style={{ height: 44 }} aria-label="Loading" />}
+        </div>
         <div className="panel">
           <h2>Takes</h2>
           {takes === null ? (
@@ -216,6 +273,7 @@ export default function CallLive(p: Props) {
           </p>
         )}
       </div>
+      <div className="stack">
       <div className="ladder-card">
         <p className="ladder-title">
           <span>{p.isLong ? "Long" : "Short"} ladder</span>
@@ -240,6 +298,7 @@ export default function CallLive(p: Props) {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

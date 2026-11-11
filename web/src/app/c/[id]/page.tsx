@@ -15,7 +15,7 @@ type Params = { params: Promise<{ id: string }> };
 const loadCall = cache((id: bigint) => readCall(id, { retries: 1, timeoutMs: 6000 }));
 const loadTakes = cache((id: bigint) => readTakes(id, { retries: 0, timeoutMs: 4000 }));
 const loadResult = cache((id: bigint) => readResult(id, { retries: 0, timeoutMs: 4000 }));
-const loadMarket = cache((pool: string) => getMarketMeta(pool, 1000));
+const loadMarket = cache((pool: string) => getMarketMeta(pool, 4000));
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { id: raw } = await params;
@@ -41,7 +41,7 @@ function Empty({ title, body, refresh }: { title: string; body: string; refresh?
             Refresh
           </Link>
         ) : (
-          <Link className="btn btn-primary" href="/">
+          <Link className="btn btn-primary" href="/app">
             Write a call
           </Link>
         )}
@@ -70,6 +70,7 @@ export default async function CallPage({ params }: Params) {
         caller={c.caller}
         pool={c.pool}
         isLong={c.isLong}
+        postedAt={c.postedAt.toString()}
         expiresAt={c.expiresAt.toString()}
         closedAt={c.closedAt.toString()}
         entry={c.entry.toString()}

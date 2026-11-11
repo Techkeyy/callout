@@ -14,6 +14,11 @@ import { alignToTick, displayDecimals, formatDisplay, formatPrice, parsePrice, r
 import { defaultBond, minBondFor, validatePostRules } from "@/lib/rules";
 import Ticket from "./Ticket";
 import Ladder from "./Ladder";
+import PriceChartLazy from "./PriceChartLazy";
+import ShareModal from "./ShareModal";
+import NextStep from "./NextStep";
+import { useToast } from "./Toast";
+import { callShareText, cardUrl } from "@/lib/share";
 
 const EXPIRIES = [
   { label: "1 hour", secs: 3600 },
@@ -22,10 +27,18 @@ const EXPIRIES = [
   { label: "7 days", secs: 7 * 86400 },
 ];
 
-type Posted = { id: bigint | null; hash: `0x${string}` };
+type Posted = {
+  id: bigint | null;
+  hash: `0x${string}`;
+  snap: { market: string; isLong: boolean; entry: bigint; stop: bigint; target: bigint; dp: number; note: string; bond: bigint; capacity: bigint; secsLeft: number };
+};
 
 export default function Composer() {
   const w = useWallet();
+  const toast = useToast();
+  const [shareOpen, setShareOpen] = useState(false);
+  const [origin, setOrigin] = useState(process.env.NEXT_PUBLIC_SITE_URL ?? "");
+  useEffect(() => setOrigin(window.location.origin), []);
   const { markets, stale, failed } = useMarkets();
   const [nowMs, setNowMs] = useState(0);
   useEffect(() => {
@@ -151,6 +164,7 @@ export default function Composer() {
     }
     const wc = w.client();
     if (!wc || !w.address) return;
+    const tid = toast.show({ tone: "pending", text: "Confirm in your wallet." });
     try {
       if (w.wrongChain) await w.switchChain();
       if (bond === null) throw new Error("bond");
@@ -167,8 +181,10 @@ export default function Composer() {
         const aEst = await publicClient.estimateContractGas({ address: token, abi: erc20Abi, functionName: "approve", args: aArgs, account: w.address });
         const aHash = await wc.writeContract({ address: token, abi: erc20Abi, functionName: "approve", args: aArgs, gas: aEst * 2n, account: w.address, chain: wc.chain });
         setBusy("chain");
+        toast.update(tid, { text: "Bond approval submitted. Waiting for confirmation.", hash: aHash });
         const aRc = await publicClient.waitForTransactionReceipt({ hash: aHash });
         if (aRc.status !== "success") throw new Error("approve reverted");
+        toast.update(tid, { text: "Bond approved. Now confirm the call in your wallet.", hash: undefined });
       }
       setBusy("wallet");
       const args = [market.pool as `0x${string}`, isLong, entry, stop, target, BigInt(Math.floor(Date.now() / 1000) + expiry), note.trim(), capacity, bond] as const;
@@ -184,6 +200,7 @@ export default function Composer() {
         chain: wc.chain,
       });
       setBusy("chain");
+      toast.update(tid, { text: "Call submitted. Waiting for confirmation.", hash });
       const rc = await publicClient.waitForTransactionReceipt({ hash });
       if (rc.status !== "success") throw new Error("reverted");
       let id: bigint | null = null;
@@ -195,11 +212,16 @@ export default function Composer() {
           /* not ours */
         }
       }
-      setPosted({ id, hash });
+      toast.update(tid, { tone: "ok", text: "Your call is live.", hash });
+      setPosted({ id, hash, snap: { market: market.name, isLong, entry, stop, target, dp, note: note.trim(), bond, capacity, secsLeft: expiry } });
+      setShareOpen(true);
     } catch (e) {
       console.error("post failed", e);
       const d = describeError(e);
-      if (d.kind === "error") setErr(d.message);
+      if (d.kind === "error") {
+        setErr(d.message);
+        toast.update(tid, { tone: "warn", text: d.message, hash: undefined });
+      } else toast.dismiss(tid);
     } finally {
       setBusy(null);
     }
@@ -207,14 +229,24 @@ export default function Composer() {
 
   if (posted) {
     const link = posted.id !== null ? `/c/${posted.id}` : null;
+    const sn = posted.snap;
+    const bondTxt = formatDisplay(sn.bond, sn.bond % 10n ** 18n === 0n ? 0 : 2);
+    const shareText = callShareText({ market: sn.market, isLong: sn.isLong, entry: formatDisplay(sn.entry, sn.dp), stop: formatDisplay(sn.stop, sn.dp), target: formatDisplay(sn.target, sn.dp), bond: bondTxt });
+    const url = link && origin ? cardUrl(origin, posted.id!) : "";
     return (
       <div className="wrap">
         <div className="empty">
           <h1>Your call is on the record.</h1>
           <p>It is written on chain and cannot be edited. Share the link and anyone can see it.</p>
+          <NextStep tone="go">Share it so others can take it.</NextStep>
           <div className="actions">
+            {url && (
+              <button type="button" className="btn btn-primary" onClick={() => setShareOpen(true)}>
+                Share your call
+              </button>
+            )}
             {link && (
-              <Link className="btn btn-primary" href={link}>
+              <Link className="btn" href={link}>
                 Open your call
               </Link>
             )}
@@ -226,6 +258,7 @@ export default function Composer() {
             className="linklike"
             onClick={() => {
               setPosted(null);
+              setShareOpen(false);
               setEntryS("");
               setStopS("");
               setTargetS("");
@@ -236,6 +269,11 @@ export default function Composer() {
             Write another call
           </button>
         </div>
+        {shareOpen && url && (
+          <ShareModal title="Your call is live" intro="It is on chain and cannot be edited. Share it so followers can take it." text={shareText} url={url} cardHref={link ?? undefined} onClose={() => setShareOpen(false)}>
+            <Ticket id={posted.id ?? undefined} market={sn.market} isLong={sn.isLong} entry={sn.entry} stop={sn.stop} target={sn.target} dp={sn.dp} note={sn.note} outcome="open" secsLeft={sn.secsLeft} bond={sn.bond} capacity={sn.capacity} caller={w.address ?? undefined} />
+          </ShareModal>
+        )}
       </div>
     );
   }
@@ -256,12 +294,25 @@ export default function Composer() {
     { lab: "Take profit", val: targetS, set: setTargetS, bad: target === null && touched },
   ];
 
+  const composerNext = !w.address ? (
+    <>Connect your wallet to post or take.</>
+  ) : usdso !== null && usdso.balance < minBond ? (
+    <>
+      You need test USDso for the bond.{" "}
+      <a href={DREAMDEX_APP_URL} target="_blank" rel="noopener noreferrer">
+        Get some in the dreamDEX testnet app
+      </a>
+      , then come back.
+    </>
+  ) : null;
+
   return (
     <div className="wrap">
       <section className="hero">
         <h1>Post a call. Let anyone take it.</h1>
         <p>Write your trade once. It goes on the record where it cannot be edited, and followers can take it with your stop and target already set.</p>
       </section>
+      {composerNext && <NextStep>{composerNext}</NextStep>}
       <div className="desk">
         <form
           className="form"
@@ -455,6 +506,9 @@ export default function Composer() {
 
         <aside className="desk-aside stack" aria-label="Preview">
           <Ticket preview market={market?.name ?? "Pick a market"} isLong={isLong} entry={entry} stop={stop} target={target} dp={dp} note={note} secsLeft={expiry} capacity={capacity} />
+          {market && (
+            <PriceChartLazy pool={market.pool} isLong={isLong} entry={nEntry} stop={nStop} target={nTarget} mark={mark !== null ? toNumber(mark) : null} dp={dp} />
+          )}
           {showLadder && (
             <div className="ladder-card">
               <p className="ladder-title">

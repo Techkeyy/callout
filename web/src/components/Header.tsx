@@ -1,11 +1,16 @@
 "use client";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useWallet } from "@/lib/wallet";
 import { shortAddress } from "@/lib/time";
 
 export default function Header() {
   const w = useWallet();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const landing = pathname === "/";
+  const onExplore = pathname === "/app" && params.get("tab") === "explore";
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -33,15 +38,34 @@ export default function Header() {
           Callout
         </Link>
         <span className="nav-spacer" />
-        <Link className="navlink" href="/board">
-          Leaderboard
-        </Link>
-        {w.address && (
-          <Link className="navlink" href={`/u/${w.address}`}>
-            My calls
-          </Link>
+        {landing ? (
+          <nav className="topnav" aria-label="Main">
+            <Link className="navlink" href="/board">
+              Leaderboard
+            </Link>
+            <Link className="btn btn-small btn-primary" href="/app">
+              Open the app
+            </Link>
+          </nav>
+        ) : (
+          <nav className="topnav" aria-label="Main">
+            <Link className="navlink" href="/app" aria-current={pathname === "/app" && !onExplore ? "page" : undefined}>
+              App
+            </Link>
+            <Link className="navlink" href="/app?tab=explore" aria-current={onExplore ? "page" : undefined}>
+              Explore
+            </Link>
+            <Link className="navlink" href="/board" aria-current={pathname === "/board" ? "page" : undefined}>
+              Leaderboard
+            </Link>
+            {w.address && (
+              <Link className="navlink" href={"/u/" + w.address} aria-current={pathname.startsWith("/u/") ? "page" : undefined}>
+                Your profile
+              </Link>
+            )}
+          </nav>
         )}
-        {!w.address ? (
+        {landing ? null : !w.address ? (
           <div className="menu-wrap" ref={ref}>
             <button
               className="btn btn-small"
@@ -74,7 +98,7 @@ export default function Header() {
                     Switch to Somnia Tokyo
                   </button>
                 )}
-                <Link role="menuitem" href={`/u/${w.address}`} onClick={() => setOpen(false)}>My calls</Link>
+                <Link role="menuitem" href={`/u/${w.address}`} onClick={() => setOpen(false)}>Your profile</Link>
                 <p>Wallet: connected. To disconnect, use your wallet app.</p>
               </div>
             )}

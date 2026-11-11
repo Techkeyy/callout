@@ -235,3 +235,26 @@ export async function getMarketQuick(pool: string, ms = 2500): Promise<MarketRow
 export function warmMarkets(): void {
   getStatic().catch(() => {});
 }
+
+// ---------- candles (cached for seconds) ----------
+
+const CANDLE_TTL_MS = 15_000;
+const candleCache = new Map<string, { at: number; rows: Array<{ bucketStart: string; openPrice: string; high: string; low: string; closePrice: string }> }>();
+
+/** Raw indexer candles for a pool, oldest first. Throws when the indexer cannot be read. An empty list means no trades. */
+export async function getCandlesFor(pool: string, intervalSecs: number, limit = 200) {
+  const key = `${pool.toLowerCase()}:${intervalSecs}:${limit}`;
+  const hit = candleCache.get(key);
+  if (hit && Date.now() - hit.at < CANDLE_TTL_MS) return hit.rows;
+  const c = await client();
+  const raw = await withTimeout(c.client.getCandles(pool as `0x${string}`, intervalSecs, { limit }), 8000);
+  const rows = (raw as Array<{ bucketStart: string; openPrice: string; high: string; low: string; closePrice: string }>).map((r) => ({
+    bucketStart: String(r.bucketStart),
+    openPrice: String(r.openPrice),
+    high: String(r.high),
+    low: String(r.low),
+    closePrice: String(r.closePrice),
+  }));
+  candleCache.set(key, { at: Date.now(), rows });
+  return rows;
+}

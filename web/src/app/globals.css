@@ -679,6 +679,10 @@ main {
     align-items: start;
   }
 }
+.call-chart {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
 .stack {
   display: grid;
   gap: var(--s-5);

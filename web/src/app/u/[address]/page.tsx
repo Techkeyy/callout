@@ -104,7 +104,7 @@ export default async function CallerPage({ params }: { params: Promise<{ address
         <div className="empty">
           <h2>No calls yet.</h2>
           <p>Calls this wallet posts will show up here.</p>
-          <Link className="btn btn-primary" href="/">
+          <Link className="btn btn-primary" href="/app">
             Write a call
           </Link>
         </div>

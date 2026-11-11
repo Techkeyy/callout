@@ -1,5 +1,5 @@
-import Composer from "@/components/Composer";
+import Landing from "@/components/landing/Landing";
 
 export default function Home() {
-  return <Composer />;
+  return <Landing />;
 }
