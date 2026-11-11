@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {CallBook} from "../src/CallBook.sol";
+import {MockERC20} from "./Mocks.sol";
 
 contract CallBookTest is Test {
     event CallPosted(
@@ -19,6 +20,10 @@ contract CallBookTest is Test {
     event CallClosed(uint256 indexed id, address indexed caller, uint64 closedAt);
 
     CallBook book;
+    MockERC20 token;
+    uint128 constant BOND = 10e18;
+    uint128 constant MIN_BOND = 5e18;
+    address constant BANK_ = 0x478769E1177C0773c43A593DCCc4Ad15F15F1394;
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
     address pool = makeAddr("pool");
@@ -29,7 +34,14 @@ contract CallBookTest is Test {
 
     function setUp() public {
         vm.warp(1_700_000_000);
-        book = new CallBook(address(0x478769E1177C0773c43A593DCCc4Ad15F15F1394));
+        token = new MockERC20();
+        book = new CallBook(BANK_, address(token), MIN_BOND);
+        address[3] memory who = [alice, bob, address(this)];
+        for (uint256 i; i < 3; i++) {
+            token.mint(who[i], 1000e18);
+            vm.prank(who[i]);
+            token.approve(address(book), type(uint256).max);
+        }
     }
 
     function _exp() internal view returns (uint64) {
@@ -38,7 +50,7 @@ contract CallBookTest is Test {
 
     function _postLong(address who) internal returns (uint256) {
         vm.prank(who);
-        return book.post(pool, true, E, DOWN, UP, _exp(), "long thesis");
+        return book.post(pool, true, E, DOWN, UP, _exp(), "long thesis", BOND);
     }
 
     // ---- happy paths ----
@@ -48,7 +60,7 @@ contract CallBookTest is Test {
         vm.expectEmit(true, true, true, true);
         emit CallPosted(1, alice, pool, true, E, DOWN, UP, exp, "btc to the moon");
         vm.prank(alice);
-        uint256 id = book.post(pool, true, E, DOWN, UP, exp, "btc to the moon");
+        uint256 id = book.post(pool, true, E, DOWN, UP, exp, "btc to the moon", BOND);
 
         assertEq(id, 1);
         assertEq(book.callCount(), 1);
@@ -70,7 +82,7 @@ contract CallBookTest is Test {
         vm.expectEmit(true, true, true, true);
         emit CallPosted(1, bob, pool, false, E, UP, DOWN, exp, "fade it");
         vm.prank(bob);
-        uint256 id = book.post(pool, false, E, UP, DOWN, exp, "fade it");
+        uint256 id = book.post(pool, false, E, UP, DOWN, exp, "fade it", BOND);
 
         assertEq(id, 1);
         CallBook.Call memory c = book.getCall(1);
@@ -85,7 +97,7 @@ contract CallBookTest is Test {
     function test_idsIncrementAndCallsOf() public {
         assertEq(_postLong(alice), 1);
         assertEq(_postLong(bob), 2);
-        vm.prank(alice); assertEq(book.post(makeAddr("pool2"), true, E, DOWN, UP, _exp(), "s"), 3);
+        vm.prank(alice); assertEq(book.post(makeAddr("pool2"), true, E, DOWN, UP, _exp(), "s", BOND), 3);
         assertEq(book.callCount(), 3);
 
         uint256[] memory a = book.callsOf(alice);
@@ -99,7 +111,7 @@ contract CallBookTest is Test {
     }
 
     function test_emptyNoteAllowed() public {
-        book.post(pool, true, E, DOWN, UP, _exp(), "");
+        book.post(pool, true, E, DOWN, UP, _exp(), "", BOND);
         assertEq(book.getCall(1).note, "");
     }
 
@@ -108,67 +120,67 @@ contract CallBookTest is Test {
     function test_revert_zeroPool() public {
         uint64 exp = _exp();
         vm.expectRevert(CallBook.ZeroPool.selector);
-        book.post(address(0), true, E, DOWN, UP, exp, "x");
+        book.post(address(0), true, E, DOWN, UP, exp, "x", BOND);
     }
 
     function test_revert_longBadOrdering() public {
         uint64 exp = _exp();
         vm.expectRevert(CallBook.BadPrices.selector);
-        book.post(pool, true, E, UP, DOWN, exp, "x"); // stop above entry
+        book.post(pool, true, E, UP, DOWN, exp, "x", BOND); // stop above entry
         vm.expectRevert(CallBook.BadPrices.selector);
-        book.post(pool, true, E, E, UP, exp, "x"); // stop == entry
+        book.post(pool, true, E, E, UP, exp, "x", BOND); // stop == entry
         vm.expectRevert(CallBook.BadPrices.selector);
-        book.post(pool, true, E, DOWN, E, exp, "x"); // target == entry
+        book.post(pool, true, E, DOWN, E, exp, "x", BOND); // target == entry
         vm.expectRevert(CallBook.BadPrices.selector);
-        book.post(pool, true, E, DOWN, DOWN, exp, "x"); // target below entry
+        book.post(pool, true, E, DOWN, DOWN, exp, "x", BOND); // target below entry
     }
 
     function test_revert_shortBadOrdering() public {
         uint64 exp = _exp();
         vm.expectRevert(CallBook.BadPrices.selector);
-        book.post(pool, false, E, DOWN, UP, exp, "x"); // long-shaped prices
+        book.post(pool, false, E, DOWN, UP, exp, "x", BOND); // long-shaped prices
         vm.expectRevert(CallBook.BadPrices.selector);
-        book.post(pool, false, E, E, DOWN, exp, "x"); // stop == entry
+        book.post(pool, false, E, E, DOWN, exp, "x", BOND); // stop == entry
         vm.expectRevert(CallBook.BadPrices.selector);
-        book.post(pool, false, E, UP, E, exp, "x"); // target == entry
+        book.post(pool, false, E, UP, E, exp, "x", BOND); // target == entry
     }
 
     function test_revert_zeroPrices() public {
         uint64 exp = _exp();
         vm.expectRevert(CallBook.BadPrices.selector);
-        book.post(pool, true, 0, 0, UP, exp, "x");
+        book.post(pool, true, 0, 0, UP, exp, "x", BOND);
         vm.expectRevert(CallBook.BadPrices.selector);
-        book.post(pool, true, E, 0, UP, exp, "x"); // zero stop on a long
+        book.post(pool, true, E, 0, UP, exp, "x", BOND); // zero stop on a long
         vm.expectRevert(CallBook.BadPrices.selector);
-        book.post(pool, false, E, UP, 0, exp, "x"); // zero target on a short
+        book.post(pool, false, E, UP, 0, exp, "x", BOND); // zero target on a short
         vm.expectRevert(CallBook.BadPrices.selector);
-        book.post(pool, false, 0, UP, 0, exp, "x");
+        book.post(pool, false, 0, UP, 0, exp, "x", BOND);
     }
 
     function test_expiryBoundaries() public {
         uint64 nowTs = uint64(block.timestamp);
         vm.expectRevert(CallBook.BadExpiry.selector);
-        book.post(pool, true, E, DOWN, UP, nowTs, "x"); // exactly now
+        book.post(pool, true, E, DOWN, UP, nowTs, "x", BOND); // exactly now
         vm.expectRevert(CallBook.BadExpiry.selector);
-        book.post(pool, true, E, DOWN, UP, nowTs - 1, "x"); // past
-        book.post(pool, true, E, DOWN, UP, nowTs + 1, "x"); // now + 1 ok
-        book.post(makeAddr("pool2"), true, E, DOWN, UP, nowTs + 30 days, "x"); // exactly +30 days ok
+        book.post(pool, true, E, DOWN, UP, nowTs - 1, "x", BOND); // past
+        book.post(pool, true, E, DOWN, UP, nowTs + 1, "x", BOND); // now + 1 ok
+        book.post(makeAddr("pool2"), true, E, DOWN, UP, nowTs + 30 days, "x", BOND); // exactly +30 days ok
         vm.expectRevert(CallBook.BadExpiry.selector);
-        book.post(pool, true, E, DOWN, UP, nowTs + 30 days + 1, "x");
+        book.post(pool, true, E, DOWN, UP, nowTs + 30 days + 1, "x", BOND);
         assertEq(book.callCount(), 2);
     }
 
     function test_noteLengthBoundary() public {
         bytes memory ok = new bytes(280);
         for (uint256 i; i < 280; i++) ok[i] = "a";
-        book.post(pool, true, E, DOWN, UP, _exp(), string(ok));
+        book.post(pool, true, E, DOWN, UP, _exp(), string(ok), BOND);
         assertEq(bytes(book.getCall(1).note).length, 280);
 
         bytes memory tooLong = new bytes(281);
         for (uint256 i; i < 281; i++) tooLong[i] = "a";
         uint64 exp = _exp();
         vm.expectRevert(CallBook.NoteTooLong.selector);
-        book.post(pool, true, E, DOWN, UP, exp, string(tooLong));
+        book.post(pool, true, E, DOWN, UP, exp, string(tooLong), BOND);
     }
 
     function test_noteLimitIsBytesNotChars() public {
@@ -180,7 +192,7 @@ contract CallBookTest is Test {
         }
         uint64 exp = _exp();
         vm.expectRevert(CallBook.NoteTooLong.selector);
-        book.post(pool, true, E, DOWN, UP, exp, string(b));
+        book.post(pool, true, E, DOWN, UP, exp, string(b), BOND);
     }
 
     // ---- close ----
@@ -240,7 +252,7 @@ contract CallBookTest is Test {
     function test_termsImmutableAcrossTimeAndClose() public {
         uint64 exp = _exp();
         vm.prank(alice);
-        book.post(pool, false, E, UP, DOWN, exp, "locked in");
+        book.post(pool, false, E, UP, DOWN, exp, "locked in", BOND);
         CallBook.Call memory before_ = book.getCall(1);
 
         vm.warp(block.timestamp + 365 days); // far past expiry
@@ -266,7 +278,7 @@ contract CallBookTest is Test {
         uint64 exp = _exp();
         bool valid = stop > 0 && stop < entry && entry < target;
         if (!valid) vm.expectRevert(CallBook.BadPrices.selector);
-        book.post(pool, true, entry, stop, target, exp, "f");
+        book.post(pool, true, entry, stop, target, exp, "f", BOND);
         if (valid) {
             CallBook.Call memory c = book.getCall(1);
             assertEq(c.entry, entry);
@@ -279,7 +291,7 @@ contract CallBookTest is Test {
         uint64 exp = _exp();
         bool valid = target > 0 && target < entry && entry < stop;
         if (!valid) vm.expectRevert(CallBook.BadPrices.selector);
-        book.post(pool, false, entry, stop, target, exp, "f");
+        book.post(pool, false, entry, stop, target, exp, "f", BOND);
         if (valid) {
             CallBook.Call memory c = book.getCall(1);
             assertEq(c.entry, entry);

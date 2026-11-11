@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {CallBook} from "../src/CallBook.sol";
+import {MockERC20} from "./Mocks.sol";
 import {ISomniaReactivityPrecompile} from "reactivity/interfaces/ISomniaReactivityPrecompile.sol";
 
 contract MockPrecompile {
@@ -26,6 +27,10 @@ contract ReactivityTest is Test {
     bytes32 constant TOPIC0 = keccak256("BuilderFeeCharged(address,address,address,uint256)");
 
     CallBook book;
+    MockERC20 token;
+    uint128 constant BOND = 10e18;
+    uint128 constant MIN_BOND = 5e18;
+    address constant BANK_ = 0x478769E1177C0773c43A593DCCc4Ad15F15F1394;
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
     address pool = makeAddr("pool");
@@ -39,12 +44,19 @@ contract ReactivityTest is Test {
 
     function setUp() public {
         vm.warp(1_700_000_000);
-        book = new CallBook(BANK);
+        token = new MockERC20();
+        book = new CallBook(BANK_, address(token), MIN_BOND);
+        address[3] memory who = [alice, bob, address(this)];
+        for (uint256 i; i < 3; i++) {
+            token.mint(who[i], 1000e18);
+            vm.prank(who[i]);
+            token.approve(address(book), type(uint256).max);
+        }
     }
 
     function _post(address who, address p) internal returns (uint256) {
         vm.prank(who);
-        return book.post(p, true, E, DOWN, UP, uint64(block.timestamp + 1 days), "t");
+        return book.post(p, true, E, DOWN, UP, uint64(block.timestamp + 1 days), "t", BOND);
     }
 
     function _topics(address payer, address builder, address p) internal pure returns (bytes32[] memory t) {
@@ -72,7 +84,7 @@ contract ReactivityTest is Test {
         uint64 exp = uint64(block.timestamp + 1 days);
         vm.prank(alice);
         vm.expectRevert(CallBook.AlreadyOpen.selector);
-        book.post(pool, true, E, DOWN, UP, exp, "again");
+        book.post(pool, true, E, DOWN, UP, exp, "again", BOND);
     }
 
     function test_openAgainAfterClose() public {
