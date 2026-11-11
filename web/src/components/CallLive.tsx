@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { useWallet } from "@/lib/wallet";
 import { useMarkets } from "@/lib/useMarkets";
 import { callBookAbi, describeError, getCallBookAddress } from "@/lib/callbook";
-import { publicClient } from "@/lib/calls";
+import { publicClient, readTakes } from "@/lib/calls";
+import TakePanel from "./TakePanel";
 import { txUrl } from "@/lib/chain";
 import { callStatus } from "@/lib/time";
 import { displayDecimals, displayName, formatDisplay, ladderDistances, toNumber } from "@/lib/prices";
@@ -34,6 +35,19 @@ export default function CallLive(p: Props) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [closeTx, setCloseTx] = useState<string | null>(null);
+  const [takes, setTakes] = useState(p.takes);
+  // Somnia records a take a moment after the fill, so poll the ledger for a short while.
+  async function refreshTakes() {
+    const start = takes?.fills ?? 0;
+    for (let n = 0; n < 12; n++) {
+      const t = await readTakes(BigInt(p.id));
+      if (t) {
+        setTakes({ takers: t.takers, fills: t.fills, fees: t.fees.toString() });
+        if (t.fills !== start) return;
+      }
+      await new Promise((r) => setTimeout(r, 2500));
+    }
+  }
   useEffect(() => {
     const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
     return () => clearInterval(t);
@@ -77,23 +91,34 @@ export default function CallLive(p: Props) {
     <div className="call-grid">
       <div className="stack">
         <Ticket id={BigInt(p.id)} market={name} isLong={p.isLong} entry={entry} stop={stop} target={target} dp={dp} note={p.note} caller={p.caller} status={status} secsLeft={secsLeft} />
+        <TakePanel
+          callId={p.id}
+          caller={p.caller as `0x${string}`}
+          isLong={p.isLong}
+          entry={entry}
+          stop={stop}
+          target={target}
+          status={status}
+          market={live}
+          onChanged={refreshTakes}
+        />
         <div className="panel">
           <h2>Takes</h2>
-          {p.takes === null ? (
+          {takes === null ? (
             <p className="hint">Take counts are not available right now.</p>
           ) : (
             <dl className="dist" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))", marginTop: 0, borderTop: 0, paddingTop: 0 }}>
               <div>
                 <dt className="dist-k">Takers</dt>
-                <dd className="dist-v num" style={{ margin: 0 }}>{p.takes.takers}</dd>
+                <dd className="dist-v num" style={{ margin: 0 }}>{takes.takers}</dd>
               </div>
               <div>
                 <dt className="dist-k">Fills</dt>
-                <dd className="dist-v num" style={{ margin: 0 }}>{p.takes.fills}</dd>
+                <dd className="dist-v num" style={{ margin: 0 }}>{takes.fills}</dd>
               </div>
               <div>
                 <dt className="dist-k">Fees earned</dt>
-                <dd className="dist-v num" style={{ margin: 0 }}>{formatDisplay(BigInt(p.takes.fees), 4)} USDso</dd>
+                <dd className="dist-v num" style={{ margin: 0 }}>{formatDisplay(BigInt(takes.fees), 4)} USDso</dd>
               </div>
             </dl>
           )}

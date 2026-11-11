@@ -2,11 +2,17 @@
 import { useEffect, useState } from "react";
 
 export interface ClientMarket {
-  pool: string;
+  pool: `0x${string}`;
   symbol: string;
   name: string;
   markPrice: bigint;
   tickSize: bigint;
+  marginBank: `0x${string}`;
+  stopRegistry: `0x${string}`;
+  quoteToken: `0x${string}`;
+  minQuantity: bigint;
+  lotSize: bigint;
+  baseDecimals: number;
 }
 
 /** Polls /api/markets. `stale` turns true when the last refresh failed. */
@@ -20,9 +26,25 @@ export function useMarkets(intervalMs = 6000) {
       try {
         const r = await fetch("/api/markets", { cache: "no-store" });
         if (!r.ok) throw new Error("bad");
-        const j = (await r.json()) as { markets: Array<{ pool: string; symbol: string; name: string; markPrice: string; tickSize: string }> };
+        const j = (await r.json()) as { markets: Array<Record<string, string | number>> };
         if (!alive) return;
-        setMarkets(j.markets.filter((m) => /^\d+$/.test(m.markPrice) && /^\d+$/.test(m.tickSize)).map((m) => ({ ...m, markPrice: BigInt(m.markPrice), tickSize: BigInt(m.tickSize) })));
+        setMarkets(
+          j.markets
+            .filter((m) => /^\d+$/.test(String(m.markPrice)) && /^\d+$/.test(String(m.tickSize)) && /^\d+$/.test(String(m.minQuantity)))
+            .map((m) => ({
+              pool: String(m.pool) as `0x${string}`,
+              symbol: String(m.symbol),
+              name: String(m.name),
+              markPrice: BigInt(m.markPrice),
+              tickSize: BigInt(m.tickSize),
+              marginBank: m.marginBank as `0x${string}`,
+              stopRegistry: m.stopRegistry as `0x${string}`,
+              quoteToken: m.quoteToken as `0x${string}`,
+              minQuantity: BigInt(m.minQuantity),
+              lotSize: BigInt(m.lotSize),
+              baseDecimals: Number(m.baseDecimals),
+            })),
+        );
         setStale(false);
         setFailed(false);
       } catch {

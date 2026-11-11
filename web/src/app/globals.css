@@ -816,3 +816,55 @@ main {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* ---------- take panel ---------- */
+.steps {
+  list-style: none;
+  margin: var(--s-3) 0 var(--s-4);
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+  font-size: var(--t-14);
+  color: var(--ink-3);
+}
+.steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.steps .step-n {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  font-size: var(--t-14);
+}
+.steps li.is-done {
+  color: var(--long);
+}
+.steps li.is-now {
+  color: var(--ink);
+  font-weight: 700;
+}
+.steps li.is-now .step-n {
+  background: var(--signal);
+  border-color: var(--ink);
+}
+.earn {
+  display: grid;
+  gap: var(--s-4);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  margin-bottom: var(--s-8);
+}
+.earn dt {
+  color: var(--ink-3);
+  font-size: var(--t-14);
+}
+.earn dd {
+  margin: 0;
+  font-size: var(--t-22);
+  font-weight: 700;
+}

@@ -1,3 +1,5 @@
+"use client";
+import { useEffect, useState } from "react";
 import { ladderScale, priceToY, formatDisplay, type LadderScale } from "@/lib/prices";
 
 interface Props {
@@ -20,7 +22,11 @@ function fmt(n: number, dp: number) {
 }
 
 /** Vertical price ladder: stop, entry, target, and the live mark. Higher price is higher on the rail. */
-export default function Ladder({ isLong, entry, stop, target, mark, dp }: Props) {
+export default function Ladder({ isLong, entry, stop, target, mark: markProp, dp }: Props) {
+  // The live price changes between server render and hydration, so anything that depends on it appears after mount.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const mark = mounted ? markProp : null;
   const vals = [entry, stop, target, ...(mark !== null ? [mark] : [])];
   const scale: LadderScale = ladderScale(vals);
   const y = (p: number) => priceToY(p, scale, RAIL, TOP);

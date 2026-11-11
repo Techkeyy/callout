@@ -9,6 +9,12 @@ export interface MarketRow {
   name: string;
   markPrice: string;
   tickSize: string;
+  marginBank: string;
+  stopRegistry: string;
+  quoteToken: string;
+  minQuantity: string;
+  lotSize: string;
+  baseDecimals: number;
 }
 
 const TTL_MS = 5000;
@@ -36,6 +42,12 @@ async function fetchMarkets(): Promise<MarketRow[]> {
       name: displayName(m.symbol),
       markPrice: String(i.markPrice),
       tickSize: String(i.tickSize),
+      marginBank: String(i.marginBank),
+      stopRegistry: String(i.stopRegistry),
+      quoteToken: String(i.quoteToken),
+      minQuantity: String(i.minQuantity),
+      lotSize: String(i.lotSize),
+      baseDecimals: Number(i.baseDecimals),
     });
   }
   rows.sort((a, b) => a.name.localeCompare(b.name));
