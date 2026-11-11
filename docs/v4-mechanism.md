@@ -62,7 +62,7 @@ Hit rate is `hits / (hits + stops + expired losses)`, so the money and the leade
 
 ## Known limits, stated plainly
 
-- **A touch between checks is missed before expiry.** If the price crosses a level and comes back before anyone resolves, the record never sees it. The keeper runs every 10 minutes, and anyone can press "Record on chain".
+- **A touch between checks is missed before expiry.** If the price crosses a level and comes back before anyone resolves, the record never sees it. The keeper runs every 2 minutes, and anyone can press "Record on chain".
 - **dreamDEX pays the builder fee at fill time.** No contract can withhold it, so the bond is how the net result is made conditional.
 - **Testnet.** Paper USDso, no real audience yet.
 - **The steward key.** One immutable address can withdraw the contract's native STT reserve (the 32 STT Somnia requires for subscriptions), so an upgrade does not strand it. It cannot touch bonds, calls or outcomes.
