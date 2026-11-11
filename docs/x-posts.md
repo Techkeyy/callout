@@ -2,6 +2,19 @@
 
 Each is under 280 characters and tags @DreamDEXSomnia. Post them, then paste the links into the "X posts" section of the README.
 
+## 0. Launch (post first, with the teaser video)
+Video: `Callout_Launch_Teaser.mp4` (35 s, 1080p).
+
+```
+Introducing Callout.
+
+Post a perps call on chain. Back it with a bond. Followers take it on @DreamDEXSomnia with stop and target armed, and you earn on every fill.
+
+Hit: your bond comes back. Stopped: it pays your takers.
+
+Live on Somnia testnet: https://callout-perps.vercel.app
+```
+
 ## 1. The bond
 Image: screenshot of the STOPPED call card at /c/2, showing the bond and the outcome.
 
