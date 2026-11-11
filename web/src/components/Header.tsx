@@ -39,13 +39,26 @@ export default function Header() {
           </Link>
         )}
         {!w.address ? (
-          w.hasWallet ? (
-            <button className="btn btn-small" onClick={w.connect} disabled={w.connecting}>
+          <div className="menu-wrap" ref={ref}>
+            <button
+              className="btn btn-small"
+              aria-expanded={w.choices.length > 1 ? open : undefined}
+              onClick={() => (w.choices.length > 1 ? setOpen((o) => !o) : w.connect())}
+              disabled={w.connecting}
+            >
               {w.connecting ? "Connecting..." : "Connect wallet"}
             </button>
-          ) : (
-            <span className="hint">Install a wallet to post or take calls</span>
-          )
+            {open && w.choices.length > 1 && (
+              <div className="menu" role="menu">
+                {w.choices.map((c) => (
+                  <button key={c.id} role="menuitem" onClick={() => { setOpen(false); w.connect(c.id); }}>
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            {w.noWallet && <p className="hint" role="status">No wallet found. Install one, then click again.</p>}
+          </div>
         ) : (
           <div className="menu-wrap" ref={ref}>
             <button className="btn btn-small" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((o) => !o)}>

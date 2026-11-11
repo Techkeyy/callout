@@ -293,8 +293,8 @@ export default function Composer() {
           {!contract && <p className="notice">Posting opens once the CallBook contract is live. You can still try out the composer.</p>}
 
           {!w.address ? (
-            <button type="button" className="btn btn-primary btn-wide" onClick={w.connect} disabled={!w.hasWallet || w.connecting}>
-              {w.hasWallet ? "Connect wallet to post" : "Install a wallet to post"}
+            <button type="button" className="btn btn-primary btn-wide" onClick={() => w.connect()} disabled={w.connecting}>
+              Connect wallet to post
             </button>
           ) : w.wrongChain ? (
             <button type="button" className="btn btn-primary btn-wide" onClick={w.switchChain}>

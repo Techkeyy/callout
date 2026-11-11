@@ -305,9 +305,10 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
           {step === "connect" && !w.address && (
             <>
               <p className="hint">Your wallet will ask you to connect. Nothing is sent yet.</p>
-              <button className="btn btn-primary btn-wide" onClick={w.connect} disabled={!w.hasWallet || w.connecting}>
-                {w.hasWallet ? "Connect wallet" : "Install a wallet to take calls"}
+              <button className="btn btn-primary btn-wide" onClick={() => w.connect()} disabled={w.connecting}>
+                Connect wallet
               </button>
+              {w.noWallet && <p className="notice is-warn" role="status">No wallet found. Install one, then click again.</p>}
             </>
           )}
           {w.address && !rd && <div className="skeleton" style={{ height: 52 }} aria-label="Checking your account" />}

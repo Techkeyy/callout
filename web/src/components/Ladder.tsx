@@ -61,7 +61,7 @@ export default function Ladder({ isLong, entry, stop, target, mark: markProp, dp
           <circle cx={RX} cy={0} r={6} fill="var(--signal)" stroke="var(--ink)" strokeWidth={2} />
         </g>
       )}
-      <title>{isLong ? "Long" : "Short"} call ladder</title>
+      <title>{`${isLong ? "Long" : "Short"} call ladder`}</title>
     </svg>
   );
 }
