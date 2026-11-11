@@ -6,13 +6,13 @@ Each is under 280 characters and tags @DreamDEXSomnia. Post them, then paste the
 Video: `Callout_Launch_Teaser.mp4` (35 s, 1080p).
 
 ```
-Anyone can post a trade call. Nobody pays when they're wrong.
+anyone can post a trade call. nobody pays when they're wrong.
 
-So I built Callout.
+so i built callout.
 
-Post your perps call on chain and back it with a bond. Followers take it on @DreamDEXSomnia, and you earn on every fill.
+post your perps call on chain and back it with a bond. followers take it on @dreamdexsomnia, and you earn on every fill.
 
-Stopped out? Your bond pays your followers.
+stopped out? your bond pays your followers.
 
 https://callout-perps.vercel.app
 ```
