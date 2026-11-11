@@ -81,6 +81,17 @@ export function pnlPercent(size: bigint, avgEntry: bigint, mark: bigint): number
   return (size > 0n ? diff : -diff) * 100;
 }
 
+export const DEFAULT_IMF_BPS = 2000n; // 20%, used only when the chain value cannot be read
+
+/**
+ * Initial margin for a DESIRED notional: ceil(notional x imfBps / 10000) plus a 5% buffer for price moves.
+ * Never derived from the chain's max order size, which is 0 for an account with no margin.
+ */
+export function requiredMargin(notional: bigint, imfBps: bigint = DEFAULT_IMF_BPS): bigint {
+  const base = (notional * imfBps + 9999n) / 10000n;
+  return base + base / 20n;
+}
+
 // ---------- what blocks a take ----------
 
 export type BlockReason = "closed" | "expired" | "stopHit" | "targetHit" | "isCaller" | "wrongNetwork";

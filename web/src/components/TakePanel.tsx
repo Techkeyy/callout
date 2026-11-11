@@ -18,6 +18,7 @@ import {
   notionalOf,
   notionalToQuantity,
   pnlPercent,
+  requiredMargin,
   STEP_ORDER,
   unrealizedPnl,
   type Step,
@@ -56,6 +57,7 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
   const [pos, setPos] = useState<dex.PositionRead | null>(null);
   const [legs, setLegs] = useState<dex.BracketLeg[] | null>(null);
   const [limit, setLimit] = useState<dex.SizeLimit | null>(null);
+  const [imfBps, setImfBps] = useState<bigint | null>(null);
   const [preset, setPreset] = useState<number | "custom">(25);
   const [custom, setCustom] = useState("");
   const [busy, setBusy] = useState<Busy>(null);
@@ -81,24 +83,31 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
   }, [fx, w.address]);
 
   const notionalUsd = preset === "custom" ? Number(custom) || 0 : preset;
-  const rules = market ? { baseDecimals: market.baseDecimals, lotSize: market.lotSize, minQuantity: market.minQuantity, maxQuantity: limit?.maxQuantity ?? null } : null;
-  const qty = market && rules && notionalUsd > 0 ? notionalToQuantity(BigInt(Math.round(notionalUsd * 100)) * (E18 / 100n), market.markPrice, rules) : 0n;
+  const baseRules = market ? { baseDecimals: market.baseDecimals, lotSize: market.lotSize, minQuantity: market.minQuantity, maxQuantity: null } : null;
+  const desiredNotional = BigInt(Math.round(notionalUsd * 100)) * (E18 / 100n);
+  // Margin is judged on the size the user WANTS. The chain's max size is 0 for an account with no margin, so it must not shrink this.
+  const desiredQty = market && baseRules && notionalUsd > 0 ? notionalToQuantity(desiredNotional, market.markPrice, baseRules) : 0n;
+  const marginNeeded = market && desiredQty > 0n ? requiredMargin(notionalOf(desiredQty, market.markPrice, market.baseDecimals), imfBps ?? undefined) : 0n;
+  // Only the order itself is clamped to what the chain says is placeable.
+  const qty =
+    market && baseRules && desiredQty > 0n && limit?.maxQuantity && limit.maxQuantity > 0n
+      ? notionalToQuantity(desiredNotional, market.markPrice, { ...baseRules, maxQuantity: limit.maxQuantity })
+      : desiredQty;
   const qtyNotional = market ? notionalOf(qty, market.markPrice, market.baseDecimals) : 0n;
-  // The chain reports the lock for the largest order, so scale it to this size. Without it, assume 20% of the notional.
-  const marginNeeded =
-    limit?.lockAmount && limit.maxQuantity && limit.maxQuantity > 0n ? (limit.lockAmount * qty + limit.maxQuantity - 1n) / limit.maxQuantity : qtyNotional / 5n;
 
   const refresh = useCallback(async () => {
     const c = ctx();
     if (!c) return;
     try {
       const mark = c.market.markPrice;
-      const [r, p, l, s] = await Promise.all([
+      const [r, p, l, s, imf] = await Promise.all([
         dex.readReadiness({ ...c, builder: caller }),
         dex.readPosition(c),
         dex.readBracket(c).catch(() => null),
         dex.readSizeLimit(c, isLong, crossingPrice(mark, c.market.tickSize, isLong)).catch(() => null),
+        dex.readImfBps(c),
       ]);
+      setImfBps(imf);
       setRd(r);
       setPos(p);
       setLegs(l);

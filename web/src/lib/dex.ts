@@ -120,6 +120,15 @@ export async function readSizeLimit(c: Pick<Ctx, "fx" | "account" | "market">, i
   return { placeable: r.placeable !== false, maxQuantity: r.maxQuantity ?? null, lockAmount: r.lockAmount ?? null, limitedBy: r.limitedBy ?? null };
 }
 
+/** The initial-margin rate in force for a pool, in bps. Null when it cannot be read. */
+export async function readImfBps(c: Pick<Ctx, "fx" | "market">): Promise<bigint | null> {
+  try {
+    return await c.fx.client.getEffectiveImfBps(c.market.pool);
+  } catch {
+    return null;
+  }
+}
+
 // ---------- gas ----------
 
 /** The node's estimate padded 2x. Somnia storage is costly, so never a low fixed limit. */

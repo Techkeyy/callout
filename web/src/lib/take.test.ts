@@ -11,6 +11,7 @@ import {
   notionalOf,
   notionalToQuantity,
   pnlPercent,
+  requiredMargin,
   tagCallId,
   unrealizedPnl,
   type SizeRules,
@@ -130,6 +131,24 @@ describe("current step", () => {
     expect(marginPlan({ walletUsdso: 50n * E18, shortfall: 10n * E18, voucherEligible: true })).toBe("deposit");
     expect(marginPlan({ walletUsdso: 0n, shortfall: 10n * E18, voucherEligible: true })).toBe("voucher");
     expect(marginPlan({ walletUsdso: 0n, shortfall: 10n * E18, voucherEligible: false })).toBe("external");
+  });
+});
+
+describe("fresh wallet with no margin", () => {
+  it("prices margin from the desired size, not from the chain's max size", () => {
+    expect(requiredMargin(25n * E18, 2000n)).toBe(5n * E18 + (5n * E18) / 20n); // 20% plus a 5% buffer
+    expect(requiredMargin(0n)).toBe(0n);
+  });
+  it("lands on the margin step when margin is 0 and the max order size is 0", () => {
+    const needed = requiredMargin(25n * E18, 1000n);
+    expect(needed).toBeGreaterThan(0n);
+    expect(deriveStep({ connected: true, stt: 5n * E18, margin: 0n, marginNeeded: needed, approval: 0n, hasPosition: false })).toBe("margin");
+    // sizing with maxQuantity 0 must not be what decides it: the desired quantity is unclamped
+    const q = notionalToQuantity(25n * E18, 73600n * E18, btc);
+    expect(q).toBeGreaterThan(0n);
+  });
+  it("offers the voucher to a fresh voucher-eligible wallet", () => {
+    expect(marginPlan({ walletUsdso: 0n, shortfall: requiredMargin(25n * E18), voucherEligible: true })).toBe("voucher");
   });
 });
 

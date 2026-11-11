@@ -70,15 +70,15 @@ export default function Earnings({ address, earned, takers, fills }: Props) {
         <div>
           <dt>Earned from takes</dt>
           <dd className="num">{formatDisplay(BigInt(earned), 4)} USDso</dd>
-          <p className="hint" style={{ margin: 0 }}>
+          <dd className="hint" style={{ fontSize: "var(--t-14)", fontWeight: 400 }}>
             {takers} {takers === 1 ? "taker" : "takers"}, {fills} {fills === 1 ? "fill" : "fills"}. Counted on chain.
-          </p>
+          </dd>
         </div>
         {mine && (
           <div>
             <dt>Withdrawable perps balance</dt>
             <dd className="num">{withdrawable === null ? "..." : `${formatDisplay(withdrawable, 4)} USDso`}</dd>
-            <p className="hint" style={{ margin: 0 }}>Includes any margin you deposited yourself.</p>
+            <dd className="hint" style={{ fontSize: "var(--t-14)", fontWeight: 400 }}>Includes any margin you deposited yourself.</dd>
           </div>
         )}
       </dl>
