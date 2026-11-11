@@ -67,6 +67,8 @@ Disk: C: was full on 2026-11-11 (0 bytes). With owner approval, deleted broken `
 
 ## Production
 
+- **Repo:** https://github.com/Techkeyy/callout (public, owner approved 2026-11-11). Push after each checkpoint commit.
+
 - **Live:** https://callout-perps.vercel.app (Vercel project `techkeyys-projects/callout`, root `web/`, linked in `web/.vercel`). Also https://callout-wine.vercel.app. Env: `NEXT_PUBLIC_CALLBOOK_ADDRESS` set at build and runtime. Owner approved production deploys and redeploys (2026-11-11).
 - Redeploy: `cd web && vercel deploy --prod --yes --build-env NEXT_PUBLIC_CALLBOOK_ADDRESS=0x073C82774C9067347d236cA0bA78dD822C1791B7 --env NEXT_PUBLIC_CALLBOOK_ADDRESS=0x073C82774C9067347d236cA0bA78dD822C1791B7`
 
@@ -79,6 +81,11 @@ UI test log, 2026-11-11, tester on /c/1 (local dev):
 - after 1 STT arrived, it auto-advanced (PASS)
 - **BUG:** "Add margin" auto-passed with 0 margin because qty was clamped to maxQuantity = 0. Sent to the builder.
 - Approve caller via UI tx `0xcf8aa2aa…c366` (PASS)
+- The "hidden pane" trap: when the Claude browser pane is hidden, page JS stops (no hydration, scripts time out). Ask the owner to show it (Ctrl+Shift+B) before UI tests.
+- Margin fix verified: a fresh wallet lands on "Add margin" with the voucher offer (PASS)
+- **dreamDEX voucher claim reverts for a plain EOA** (tx `0x40053729…3187`, error 0x3e31dcc2, not in SDK ABIs) although `getPerpVoucherEligibility` says eligible. Possibly a new Feedback item. App must simulate before offering (sent to builder).
+- Deposit route offered once the wallet held USDso (PASS), but the amount was IMF-only (36x), so a liquidation would come before the stop. **RISK BUG sent to builder:** margin must cover stop distance + MM + 2%, show liquidation price.
+- Production redeployed 2026-11-11 with the margin and EIP-6963 fixes (callout-4uejd708w). A public HTTPS page can't call the localhost test signer, so UI tests run on localhost:3111.
 
 ## Builders
 
