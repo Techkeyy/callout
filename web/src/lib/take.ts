@@ -199,9 +199,10 @@ export function settledOr<T>(r: PromiseSettledResult<T>, prev: T): T {
 
 // ---------- what blocks a take ----------
 
-export type BlockReason = "closed" | "expired" | "stopHit" | "targetHit" | "isCaller" | "wrongNetwork" | "stalePrice";
+export type BlockReason = "resolved" | "closed" | "expired" | "stopHit" | "targetHit" | "isCaller" | "wrongNetwork" | "stalePrice";
 
 export const BLOCK_COPY: Record<BlockReason, string> = {
+  resolved: "This call has been resolved. It can no longer be taken.",
   closed: "The caller closed this call. It can no longer be taken.",
   expired: "This call has expired. It can no longer be taken.",
   stopHit: "This call already hit its stop, so it can no longer be taken.",
@@ -212,7 +213,7 @@ export const BLOCK_COPY: Record<BlockReason, string> = {
 };
 
 export function blockReason(i: {
-  status: "open" | "expired" | "closed";
+  status: "open" | "expired" | "closed" | "resolved";
   isCaller: boolean;
   wrongNetwork: boolean;
   isLong: boolean;
@@ -222,6 +223,7 @@ export function blockReason(i: {
   /** False when the price feed is stale or unread. Defaults to true. */
   priceOk?: boolean;
 }): BlockReason | null {
+  if (i.status === "resolved") return "resolved";
   if (i.status === "closed") return "closed";
   if (i.status === "expired") return "expired";
   if (i.isCaller) return "isCaller";

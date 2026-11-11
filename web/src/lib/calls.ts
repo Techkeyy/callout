@@ -3,6 +3,7 @@ import { callBookAbi, getCallBookAddress, type Call } from "./callbook";
 import { HTTP_URL, somniaTokyo } from "./chain";
 import { classifyReadError, READ_BACKOFF_MS, READ_RETRIES, READ_TIMEOUT_MS, UNREACHABLE_COPY } from "./readstate";
 import { hedge, withRetry, withTimeout } from "./take";
+import { outcomeFromCode, type Outcome, type RecordCounts } from "./outcome";
 
 export const publicClient = createPublicClient({
   chain: somniaTokyo,
@@ -91,5 +92,80 @@ export async function readCallsOf(caller: `0x${string}`, o?: ReadOpts): Promise<
     return { status: "ok", ids: [...ids].reverse() };
   } catch {
     return { status: "error", message: UNREACHABLE_COPY };
+  }
+}
+
+export interface ResultData {
+  outcome: Outcome;
+  resolvedAt: bigint;
+  price: bigint;
+  bond: bigint;
+  claimedTotal: bigint;
+}
+
+/** The on-chain result of a call: outcome, bond and what has been claimed. Null when unreadable or the contract is not set. */
+export async function readResult(id: bigint, o?: ReadOpts): Promise<ResultData | null> {
+  const address = getCallBookAddress();
+  if (!address) return null;
+  try {
+    const r = (await robust(() => publicClient.readContract({ address, abi: callBookAbi, functionName: "getResult", args: [id] }), o)) as {
+      outcome: number;
+      resolvedAt: bigint;
+      price: bigint;
+      bond: bigint;
+      claimedTotal: bigint;
+    };
+    return { outcome: outcomeFromCode(r.outcome), resolvedAt: BigInt(r.resolvedAt), price: BigInt(r.price), bond: BigInt(r.bond), claimedTotal: BigInt(r.claimedTotal) };
+  } catch {
+    return null;
+  }
+}
+
+/** A caller's hits, stops and expired counts. */
+export async function readRecord(caller: `0x${string}`, o?: ReadOpts): Promise<RecordCounts | null> {
+  const address = getCallBookAddress();
+  if (!address) return null;
+  try {
+    const r = (await robust(() => publicClient.readContract({ address, abi: callBookAbi, functionName: "getRecord", args: [caller] }), o)) as {
+      hits: number;
+      stops: number;
+      expired: number;
+    };
+    return { hits: Number(r.hits), stops: Number(r.stops), expired: Number(r.expired) };
+  } catch {
+    return null;
+  }
+}
+
+/** The minimum bond in 18-decimal USDso, or null when unreadable. */
+export async function readMinBond(o?: ReadOpts): Promise<bigint | null> {
+  const address = getCallBookAddress();
+  if (!address) return null;
+  try {
+    return BigInt((await robust(() => publicClient.readContract({ address, abi: callBookAbi, functionName: "minBond" }), o)) as bigint);
+  } catch {
+    return null;
+  }
+}
+
+/** What a wallet could claim on a call right now, or null when unreadable. */
+export async function readClaimable(id: bigint, who: `0x${string}`, o?: ReadOpts): Promise<bigint | null> {
+  const address = getCallBookAddress();
+  if (!address) return null;
+  try {
+    return BigInt((await robust(() => publicClient.readContract({ address, abi: callBookAbi, functionName: "claimableOf", args: [id, who] }), o)) as bigint);
+  } catch {
+    return null;
+  }
+}
+
+/** The number of calls ever posted, or null when unreadable or the contract is not set. */
+export async function readCallCount(o?: ReadOpts): Promise<bigint | null> {
+  const address = getCallBookAddress();
+  if (!address) return null;
+  try {
+    return BigInt((await robust(() => publicClient.readContract({ address, abi: callBookAbi, functionName: "callCount" }), o)) as bigint);
+  } catch {
+    return null;
   }
 }

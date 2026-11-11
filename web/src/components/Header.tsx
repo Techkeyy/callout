@@ -33,6 +33,9 @@ export default function Header() {
           Callout
         </Link>
         <span className="nav-spacer" />
+        <Link className="navlink" href="/board">
+          Leaderboard
+        </Link>
         {w.address && (
           <Link className="navlink" href={`/u/${w.address}`}>
             My calls

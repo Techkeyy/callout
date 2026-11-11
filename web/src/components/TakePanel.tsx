@@ -38,7 +38,7 @@ interface Props {
   entry: bigint;
   stop: bigint;
   target: bigint;
-  status: "open" | "expired" | "closed";
+  status: "open" | "expired" | "closed" | "resolved";
   market: ClientMarket | null;
   /** Called after a take or a close so the card's counters refresh. */
   onChanged: () => void;

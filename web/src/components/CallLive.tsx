@@ -1,10 +1,12 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useWallet } from "@/lib/wallet";
 import { useMarkets } from "@/lib/useMarkets";
 import { ageLabel, markAgeSec, STALE_PRICE_COPY } from "@/lib/mark";
 import { callBookAbi, describeError, getCallBookAddress } from "@/lib/callbook";
-import { publicClient, readTakes } from "@/lib/calls";
+import { publicClient, readClaimable, readRecord, readResult, readTakes } from "@/lib/calls";
+import { recordLine, type Outcome, type RecordCounts } from "@/lib/outcome";
+import { ClaimPanel, ResolvePanel } from "./ResolveClaim";
 import dynamic from "next/dynamic";
 
 // The take panel pulls in the markets SDK. Loading it only in the browser keeps the server render fast and light.
@@ -37,6 +39,7 @@ interface Props {
   serverNow: number;
   initialMarket: { name: string; tickSize: string; markPrice: string; markOk: boolean; readAt: number } | null;
   takes: { takers: number; fills: number; fees: string } | null;
+  result: { outcome: Outcome; resolvedAt: string; price: string; bond: string; claimedTotal: string } | null;
 }
 
 export default function CallLive(p: Props) {
@@ -48,6 +51,33 @@ export default function CallLive(p: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [closeTx, setCloseTx] = useState<string | null>(null);
   const [takes, setTakes] = useState(p.takes);
+  const [result, setResult] = useState(p.result);
+  const [record, setRecord] = useState<RecordCounts | null>(null);
+  const [claimable, setClaimable] = useState<bigint | null>(null);
+  const outcome: Outcome = result?.outcome ?? "open";
+  const resolved = outcome !== "open";
+
+  async function refreshResult() {
+    const [r, rec] = await Promise.all([readResult(BigInt(p.id)), readRecord(p.caller as `0x${string}`)]);
+    if (r) setResult({ outcome: r.outcome, resolvedAt: r.resolvedAt.toString(), price: r.price.toString(), bond: r.bond.toString(), claimedTotal: r.claimedTotal.toString() });
+    if (rec) setRecord(rec);
+  }
+  // The caller's record loads in the browser so the page itself stays fast.
+  useEffect(() => {
+    readRecord(p.caller as `0x${string}`).then((r) => r && setRecord(r));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.caller]);
+  const refreshClaimable = useCallback(async () => {
+    if (!w.address || !resolved) {
+      setClaimable(null);
+      return;
+    }
+    setClaimable(await readClaimable(BigInt(p.id), w.address));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [w.address, resolved, p.id]);
+  useEffect(() => {
+    refreshClaimable();
+  }, [refreshClaimable]);
   // Somnia records a take a moment after the fill, so poll the ledger for a short while.
   async function refreshTakes() {
     const start = takes?.fills ?? 0;
@@ -104,7 +134,9 @@ export default function CallLive(p: Props) {
   return (
     <div className="call-grid">
       <div className="stack">
-        <Ticket id={BigInt(p.id)} market={name} isLong={p.isLong} entry={entry} stop={stop} target={target} dp={dp} note={p.note} caller={p.caller} status={status} secsLeft={secsLeft} />
+        <Ticket id={BigInt(p.id)} market={name} isLong={p.isLong} entry={entry} stop={stop} target={target} dp={dp} note={p.note} caller={p.caller} status={status} secsLeft={secsLeft} outcome={outcome} bond={result ? BigInt(result.bond) : null} recordLine={recordLine(record)} />
+        {!resolved && <ResolvePanel callId={BigInt(p.id)} isLong={p.isLong} stop={stop} target={target} expiresAt={Number(p.expiresAt)} nowSec={now} market={live} onDone={refreshResult} />}
+        {resolved && <ClaimPanel callId={BigInt(p.id)} outcome={outcome} claimable={claimable} isCaller={isMine} onDone={() => { refreshResult(); refreshClaimable(); }} />}
         <TakePanel
           callId={p.id}
           caller={p.caller as `0x${string}`}
@@ -112,7 +144,7 @@ export default function CallLive(p: Props) {
           entry={entry}
           stop={stop}
           target={target}
-          status={status}
+          status={resolved ? "resolved" : status}
           market={live}
           onChanged={refreshTakes}
         />
@@ -138,10 +170,10 @@ export default function CallLive(p: Props) {
           )}
           <p className="hint" style={{ marginTop: 8 }}>Takes are recorded on chain by Somnia, so nobody can add or remove one.</p>
         </div>
-        {isMine && status === "open" && (
+        {isMine && status === "open" && !resolved && (
           <div className="panel">
             <h2>Close this call</h2>
-            <p className="hint">Closing stops new takes. It does not change the record of what you posted.</p>
+            <p className="hint">Closing stops new takes. The call can still be resolved until it expires, and your bond stays locked until then.</p>
             {err && (
               <p className="notice is-warn" role="alert">
                 {err}

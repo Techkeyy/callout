@@ -422,7 +422,7 @@ main {
   filter: drop-shadow(0 1px 0 var(--line-strong)) drop-shadow(0 8px 14px rgba(40, 30, 10, 0.1));
 }
 .ticket {
-  --stub: 84px;
+  --stub: 96px;
   position: relative;
   background: var(--slip);
   color: var(--ink);
@@ -477,6 +477,34 @@ main {
 .stamp.is-short {
   color: var(--short);
 }
+.stamp.is-hit {
+  color: var(--long);
+}
+.stamp.is-stopped {
+  color: var(--short);
+}
+.stamp.is-expired,
+.stamp.is-open {
+  color: var(--ink);
+}
+.dir-chip {
+  margin: calc(-1 * var(--s-2)) 0 var(--s-4);
+  font-size: var(--t-14);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.dir-chip.is-long {
+  color: var(--long);
+}
+.dir-chip.is-short {
+  color: var(--short);
+}
+.stub-record {
+  margin: 0;
+  font-size: var(--t-14);
+  color: var(--ink-3);
+}
 .prices {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -511,7 +539,7 @@ main {
   color: var(--ink-3);
 }
 .ticket-stub {
-  height: var(--stub);
+  min-height: var(--stub);
   padding: 0 var(--s-5);
   display: flex;
   align-items: center;
@@ -867,4 +895,47 @@ main {
   margin: 0;
   font-size: var(--t-22);
   font-weight: 700;
+}
+
+.status.is-out-hit {
+  color: var(--long);
+}
+.status.is-out-stopped {
+  color: var(--short);
+}
+.status.is-out-expired {
+  color: var(--ink);
+}
+.row-claim {
+  font-size: var(--t-14);
+  font-weight: 600;
+  color: var(--signal-ink);
+}
+.board {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-15);
+}
+.board th,
+.board td {
+  text-align: left;
+  padding: var(--s-3) var(--s-3);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.board th {
+  font-size: var(--t-14);
+  color: var(--ink-3);
+  font-weight: 600;
+}
+.board td.n,
+.board th.n {
+  text-align: right;
+}
+.board-wrap {
+  overflow-x: auto;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--slip);
+  margin-bottom: var(--s-16);
 }

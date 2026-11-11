@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { isAddress, getAddress } from "viem";
-import { readCall, readCallsOf, readTakes } from "@/lib/calls";
+import { readCall, readCallsOf, readRecord, readResult, readTakes } from "@/lib/calls";
+import RowClaim from "@/components/RowClaim";
+import { hitRate, OUTCOME_LABEL, recordLine } from "@/lib/outcome";
 import Earnings from "@/components/EarningsLazy";
 import { NOT_CONNECTED_COPY, UNREACHABLE_COPY } from "@/lib/readstate";
 import { getMarketMeta } from "@/lib/markets";
@@ -27,6 +29,7 @@ export default async function CallerPage({ params }: { params: Promise<{ address
   const shown = ids ? ids.slice(0, 50) : [];
   const results = await Promise.all(shown.map((i) => readCall(i)));
   const takesList = await Promise.all((ids ?? []).map((i) => readTakes(i)));
+  const [outcomes, record] = await Promise.all([Promise.all(shown.map((i) => readResult(i, { retries: 0, timeoutMs: 5000 }))), readRecord(who, { retries: 0, timeoutMs: 5000 })]);
   // Only the pools these calls use, from the long-lived metadata cache. Never the full live list.
   const pools = [...new Set(results.flatMap((r) => (r.status === "ok" ? [r.call.pool.toLowerCase()] : [])))];
   const metas = await Promise.all(pools.map((p) => getMarketMeta(p, 1500)));
@@ -41,6 +44,36 @@ export default async function CallerPage({ params }: { params: Promise<{ address
         <h1 className="num">{shortAddress(who)}</h1>
         <p className="hint">Every call this wallet has posted. They cannot be edited.</p>
       </div>
+      {ids !== null && (
+        <section className="panel" style={{ marginBottom: "var(--s-5)" }} aria-label="Record">
+          <h2>Record</h2>
+          {record === null ? (
+            <p className="hint">The record is not available right now. Refresh in a moment.</p>
+          ) : (
+            <>
+              <dl className="earn" style={{ marginTop: 12, marginBottom: 8 }}>
+                <div>
+                  <dt>Hit</dt>
+                  <dd className="num">{record.hits}</dd>
+                </div>
+                <div>
+                  <dt>Stopped</dt>
+                  <dd className="num">{record.stops}</dd>
+                </div>
+                <div>
+                  <dt>Expired</dt>
+                  <dd className="num">{record.expired}</dd>
+                </div>
+                <div>
+                  <dt>Hit rate</dt>
+                  <dd className="num">{hitRate(record.hits, record.stops) === null ? "-" : `${Math.round(hitRate(record.hits, record.stops)!)}%`}</dd>
+                </div>
+              </dl>
+              <p className="hint">{recordLine(record)}. Expired calls do not count toward the hit rate.</p>
+            </>
+          )}
+        </section>
+      )}
       {ids !== null && <Earnings address={who} earned={partial ? null : total.fees.toString()} takers={total.takers} fills={total.fills} />}
       {partial && ids !== null && (
         <p className="notice is-warn" role="status">
@@ -90,9 +123,14 @@ export default async function CallerPage({ params }: { params: Promise<{ address
                     <span className="row-sub num">
                       Entry {formatDisplay(c.entry, dp)} / Stop {formatDisplay(c.stop, dp)} / Target {formatDisplay(c.target, dp)}
                     </span>
+                    {outcomes[i] && outcomes[i]!.outcome !== "open" && <RowClaim id={id.toString()} />}
                   </span>
                   <span className="row-sub num">{takesList[i] ? `${takesList[i]!.takers} ${takesList[i]!.takers === 1 ? "taker" : "takers"}` : ""}</span>
-                  <span className={`status is-${st}`}>{st === "open" ? "Open" : st === "expired" ? "Expired" : "Closed"}</span>
+                  {outcomes[i] && outcomes[i]!.outcome !== "open" ? (
+                    <span className={`status is-out-${outcomes[i]!.outcome}`}>{OUTCOME_LABEL[outcomes[i]!.outcome]}</span>
+                  ) : (
+                    <span className={`status is-${st}`}>{st === "open" ? "Open" : st === "expired" ? "Expired" : "Closed"}</span>
+                  )}
                 </Link>
               </li>
             );

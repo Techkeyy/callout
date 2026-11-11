@@ -33,7 +33,44 @@ export const ERROR_MESSAGES: Record<string, string> = {
   AlreadyClosed: "This call is already closed.",
   NoSuchCall: "This call does not exist.",
   AlreadyOpen: "You already have an open call on this market. Close it first.",
+  BondTooSmall: "Your bond is below the minimum. Raise it and try again.",
+  TransferFailed: "The bond could not be moved. Check that you have enough USDso and that you approved it, then try again.",
+  StalePrice: "The price feed is stale right now, so the outcome cannot be recorded yet. Try again in a moment.",
+  NotResolvable: "The price is no longer past the target or the stop, so there is nothing to record yet. Nothing changed.",
+  AlreadyResolved: "This call has already been resolved.",
+  NotClaimable: "This call has not been resolved yet, so there is nothing to claim.",
+  AlreadyClaimed: "You have already claimed from this call.",
+  NothingToClaim: "There is nothing for you to claim on this call.",
 };
+
+/** Minimal ERC-20 surface for the bond token. */
+export const erc20Abi = [
+  { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "a", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+  {
+    type: "function",
+    name: "allowance",
+    stateMutability: "view",
+    inputs: [
+      { name: "o", type: "address" },
+      { name: "s", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "s", type: "address" },
+      { name: "v", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const;
+
+/** The bond fallback used only if minBond() cannot be read. */
+export const DEFAULT_MIN_BOND = 5n * 10n ** 18n;
+export const DEFAULT_BOND_USDSO = 10;
 
 export type DescribedError = { kind: "rejected" } | { kind: "error"; message: string };
 
