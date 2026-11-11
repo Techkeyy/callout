@@ -65,7 +65,7 @@ export default async function CallPage({ params }: Params) {
         target={c.target.toString()}
         note={c.note}
         serverNow={Math.floor(Date.now() / 1000)}
-        initialMarket={m ? { name: m.name, tickSize: m.tickSize, markPrice: m.markPrice } : null}
+        initialMarket={m ? { name: m.name, tickSize: m.tickSize, markPrice: m.markPrice, markOk: m.markOk, readAt: m.readAt } : null}
         takes={takes ? { takers: takes.takers, fills: takes.fills, fees: takes.fees.toString() } : null}
       />
     </div>

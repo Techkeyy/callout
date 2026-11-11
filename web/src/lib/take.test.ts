@@ -24,6 +24,8 @@ import {
   unrealizedPnl,
   type SizeRules,
 } from "./take.ts";
+import { ageLabel, isPriceUsable, markAgeSec, parseLiveState, toSeconds } from "./mark.ts";
+import { parseMarketRow } from "./useMarkets.ts";
 
 const E18 = 10n ** 18n;
 const btc: SizeRules = { baseDecimals: 8, lotSize: 1000n, minQuantity: 13000n, maxQuantity: null };
@@ -237,6 +239,54 @@ describe("resilient reads", () => {
   it("times out a read that never answers", async () => {
     await expect(withTimeout(new Promise(() => {}), 20)).rejects.toThrow("too long");
     expect(await withTimeout(Promise.resolve(5), 20)).toBe(5);
+  });
+});
+
+describe("live mark parsing and staleness", () => {
+  it("reads the on-chain state, not the indexer snapshot", () => {
+    const s = parseLiveState({ markPrice: 73763771350586626500000n, markPriceOk: true, indexPrice: 73760000000000000000000n, indexUpdatedAt: 1762829000n });
+    expect(s).toEqual({ markPrice: "73763771350586626500000", indexPrice: "73760000000000000000000", markOk: true, indexUpdatedAtSec: 1762829000 });
+  });
+  it("flags a stale feed as not ok and never as live", () => {
+    expect(parseLiveState({ markPrice: 73653424212673681500000n, markPriceOk: false, indexPrice: 0n })?.markOk).toBe(false);
+    expect(parseLiveState({ markPrice: 0n, markPriceOk: true })?.markOk).toBe(false);
+    expect(parseLiveState({ markPrice: 5n })?.markOk).toBe(false); // a missing flag is not ok
+  });
+  it("rejects unusable input", () => {
+    expect(parseLiveState(null)).toBeNull();
+    expect(parseLiveState({ markPrice: "abc", markPriceOk: true })).toBeNull();
+  });
+  it("normalises timestamps from seconds, ms and ns", () => {
+    expect(toSeconds(1762829000n)).toBe(1762829000);
+    expect(toSeconds(1762829000123n)).toBe(1762829000);
+    expect(toSeconds(1762829000123456789n)).toBe(1762829000);
+    expect(toSeconds(0n)).toBe(0);
+    expect(toSeconds(undefined)).toBe(0);
+  });
+  it("labels the age truthfully", () => {
+    expect(markAgeSec(10_000, 13_400)).toBe(3);
+    expect(markAgeSec(20_000, 10_000)).toBe(0);
+    expect(ageLabel(0)).toBe("updated just now");
+    expect(ageLabel(3)).toBe("updated 3s ago");
+    expect(ageLabel(125)).toBe("updated 2m ago");
+  });
+  it("only lets a fresh, positive mark drive a take or an entry", () => {
+    expect(isPriceUsable(true, 1n)).toBe(true);
+    expect(isPriceUsable(false, 1n)).toBe(false);
+    expect(isPriceUsable(true, null)).toBe(false);
+    expect(isPriceUsable(true, 0n)).toBe(false);
+  });
+  it("blocks a take while the price feed is stale", () => {
+    const base = { status: "open" as const, isCaller: false, wrongNetwork: false, isLong: true, mark: 73600n * E18, stop: 69920n * E18, target: 80960n * E18 };
+    expect(blockReason({ ...base, priceOk: false })).toBe("stalePrice");
+    expect(blockReason({ ...base, priceOk: true })).toBeNull();
+    expect(blockReason({ ...base, status: "expired", priceOk: false })).toBe("expired");
+  });
+  it("parses API rows, treating a missing markOk as stale", () => {
+    const row = { pool: "0x1", symbol: "BTC/USDso:USDso", name: "BTC-PERP", markPrice: "73763771350586626500000", indexPrice: "1", markOk: true, readAt: 5, tickSize: "100000000000000000", marginBank: "0x2", stopRegistry: "0x3", quoteToken: "0x4", minQuantity: "13000", lotSize: "1000", baseDecimals: 8 };
+    expect(parseMarketRow(row)?.markOk).toBe(true);
+    expect(parseMarketRow({ ...row, markOk: undefined })?.markOk).toBe(false);
+    expect(parseMarketRow({ ...row, markPrice: "null" })).toBeNull();
   });
 });
 

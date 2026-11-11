@@ -1,9 +1,10 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { decodeEventLog } from "viem";
 import { useWallet } from "@/lib/wallet";
 import { useMarkets } from "@/lib/useMarkets";
+import { ageLabel, markAgeSec, STALE_PRICE_COPY } from "@/lib/mark";
 import { callBookAbi, describeError, getCallBookAddress, NOTE_MAX } from "@/lib/callbook";
 import { publicClient } from "@/lib/calls";
 import { txUrl } from "@/lib/chain";
@@ -23,6 +24,12 @@ type Posted = { id: bigint | null; hash: `0x${string}` };
 export default function Composer() {
   const w = useWallet();
   const { markets, stale, failed } = useMarkets();
+  const [nowMs, setNowMs] = useState(0);
+  useEffect(() => {
+    setNowMs(Date.now());
+    const t = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
   const [poolSel, setPoolSel] = useState<string>("");
   const [isLong, setIsLong] = useState(true);
   const [entryS, setEntryS] = useState("");
@@ -39,9 +46,13 @@ export default function Composer() {
     () => markets?.find((m) => m.pool === poolSel) ?? markets?.find((m) => m.symbol.startsWith("BTC/")) ?? markets?.[0] ?? null,
     [markets, poolSel],
   );
+  // The selected market is re-read on its own, faster, so its mark is the live on-chain value.
+  const sel = useMarkets(4000, market?.pool);
+  const liveSel = sel.markets?.[0] ?? null;
+  const priceOk = !!liveSel && liveSel.markOk;
   const tick = market?.tickSize ?? 0n;
   const dp = market ? displayDecimals(tick) : 2;
-  const mark = market?.markPrice ?? null;
+  const mark = liveSel && liveSel.markOk ? liveSel.markPrice : null;
 
   const entry = parsePrice(entryS);
   const stop = parsePrice(stopS);
@@ -203,11 +214,12 @@ export default function Composer() {
             )}
             {mark !== null && (
               <p className="hint num">
-                <span className={`live-dot ${stale ? "is-stale" : ""}`} />
+                <span className={`live-dot ${stale || sel.stale ? "is-stale" : ""}`} />
                 Live price {formatDisplay(mark, dp)}
-                {stale ? " (last known)" : ""}
+                {liveSel && liveSel.readAt > 0 ? `, ${ageLabel(markAgeSec(liveSel.readAt, nowMs))}` : ""}
               </p>
             )}
+            {market && liveSel && !priceOk && <p className="hint">{STALE_PRICE_COPY}. You can still type your own entry.</p>}
           </div>
 
           <div className="field">
@@ -244,7 +256,7 @@ export default function Composer() {
             ))}
           </div>
           <div className="field-head">
-            <button type="button" className="linklike" onClick={useMark} disabled={mark === null}>
+            <button type="button" className="linklike" onClick={useMark} disabled={mark === null || !priceOk}>
               Use live price as entry
             </button>
             <button type="button" className="linklike" onClick={snap} disabled={!tick}>

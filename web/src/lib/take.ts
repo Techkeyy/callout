@@ -158,7 +158,7 @@ export function settledOr<T>(r: PromiseSettledResult<T>, prev: T): T {
 
 // ---------- what blocks a take ----------
 
-export type BlockReason = "closed" | "expired" | "stopHit" | "targetHit" | "isCaller" | "wrongNetwork";
+export type BlockReason = "closed" | "expired" | "stopHit" | "targetHit" | "isCaller" | "wrongNetwork" | "stalePrice";
 
 export const BLOCK_COPY: Record<BlockReason, string> = {
   closed: "The caller closed this call. It can no longer be taken.",
@@ -166,6 +166,7 @@ export const BLOCK_COPY: Record<BlockReason, string> = {
   stopHit: "This call already hit its stop, so it can no longer be taken.",
   targetHit: "This call already reached its target, so it can no longer be taken.",
   isCaller: "This is your call. Share the link so others can take it.",
+  stalePrice: "Price feed is stale right now. Try again in a moment.",
   wrongNetwork: "Your wallet is on a different network. Switch to Somnia Tokyo to continue.",
 };
 
@@ -177,10 +178,13 @@ export function blockReason(i: {
   mark: bigint | null;
   stop: bigint;
   target: bigint;
+  /** False when the price feed is stale or unread. Defaults to true. */
+  priceOk?: boolean;
 }): BlockReason | null {
   if (i.status === "closed") return "closed";
   if (i.status === "expired") return "expired";
   if (i.isCaller) return "isCaller";
+  if (i.priceOk === false) return "stalePrice";
   if (i.mark !== null) {
     if (i.isLong ? i.mark <= i.stop : i.mark >= i.stop) return "stopHit";
     if (i.isLong ? i.mark >= i.target : i.mark <= i.target) return "targetHit";

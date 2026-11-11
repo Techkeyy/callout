@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useWallet } from "@/lib/wallet";
 import { useMarkets } from "@/lib/useMarkets";
+import { ageLabel, markAgeSec, STALE_PRICE_COPY } from "@/lib/mark";
 import { callBookAbi, describeError, getCallBookAddress } from "@/lib/callbook";
 import { publicClient, readTakes } from "@/lib/calls";
 import TakePanel from "./TakePanel";
@@ -23,13 +24,13 @@ interface Props {
   target: string;
   note: string;
   serverNow: number;
-  initialMarket: { name: string; tickSize: string; markPrice: string } | null;
+  initialMarket: { name: string; tickSize: string; markPrice: string; markOk: boolean; readAt: number } | null;
   takes: { takers: number; fills: number; fees: string } | null;
 }
 
 export default function CallLive(p: Props) {
   const w = useWallet();
-  const { markets, stale } = useMarkets();
+  const { markets, stale } = useMarkets(4000, p.pool);
   const [now, setNow] = useState(p.serverNow);
   const [closedAt, setClosedAt] = useState(BigInt(p.closedAt));
   const [busy, setBusy] = useState(false);
@@ -57,10 +58,12 @@ export default function CallLive(p: Props) {
   const stop = BigInt(p.stop);
   const target = BigInt(p.target);
   const live = markets?.find((m) => m.pool.toLowerCase() === p.pool.toLowerCase()) ?? null;
-  const market = live ?? (p.initialMarket ? { name: p.initialMarket.name, tickSize: BigInt(p.initialMarket.tickSize), markPrice: BigInt(p.initialMarket.markPrice) } : null);
+  const market = live ?? (p.initialMarket ? { name: p.initialMarket.name, tickSize: BigInt(p.initialMarket.tickSize), markPrice: BigInt(p.initialMarket.markPrice), markOk: p.initialMarket.markOk, readAt: p.initialMarket.readAt } : null);
+  // A stale or unread price is never shown as live.
+  const priceOk = !!market && market.markOk;
   const name = market?.name ?? displayName("PERP");
   const dp = market ? displayDecimals(market.tickSize) : 2;
-  const mark = market ? toNumber(market.markPrice) : null;
+  const mark = market && priceOk ? toNumber(market.markPrice) : null;
   const status = callStatus({ expiresAt: BigInt(p.expiresAt), closedAt }, now);
   const secsLeft = Math.max(0, Number(p.expiresAt) - now);
   const dist = mark !== null ? ladderDistances(p.isLong, mark, toNumber(stop), toNumber(target)) : null;
@@ -153,9 +156,12 @@ export default function CallLive(p: Props) {
         <p className="ladder-title">
           <span>{p.isLong ? "Long" : "Short"} ladder</span>
           <span className="num">
-            <span className={`live-dot ${stale || !live ? "is-stale" : ""}`} />
-            {market ? formatDisplay(market.markPrice, dp) : "no live price"}
+            <span className={`live-dot ${stale || !live || !priceOk ? "is-stale" : ""}`} />
+            {market && priceOk ? formatDisplay(market.markPrice, dp) : "no live price"}
           </span>
+        </p>
+        <p className="hint" style={{ margin: "0 0 8px" }}>
+          {!market ? "Waiting for the price." : !priceOk ? `${STALE_PRICE_COPY}.` : market.readAt > 0 ? ageLabel(markAgeSec(market.readAt, now * 1000)) : ""}
         </p>
         <Ladder isLong={p.isLong} entry={toNumber(entry)} stop={toNumber(stop)} target={toNumber(target)} mark={mark} dp={dp} />
         {dist && (

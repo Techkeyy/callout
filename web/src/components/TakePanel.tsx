@@ -160,7 +160,7 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
 
   const dp = market ? displayDecimals(market.tickSize) : 2;
   const mark = market?.markPrice ?? null;
-  const block = blockReason({ status, isCaller, wrongNetwork: w.wrongChain, isLong, mark, stop, target });
+  const block = blockReason({ status, isCaller, wrongNetwork: w.wrongChain, isLong, mark, stop, target, priceOk: market?.markOk ?? true });
   const step: Step = deriveStep({
     connected: !!w.address,
     stt: rd?.stt ?? null,
