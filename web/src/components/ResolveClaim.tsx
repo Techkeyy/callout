@@ -101,12 +101,15 @@ export function ClaimPanel(p: {
   outcome: Outcome;
   claimable: bigint | null;
   isCaller: boolean;
+  /** True when the call is not recorded yet but the price already allows it. claim() then settles it first. */
+  settleable?: boolean;
   onDone: () => void;
 }) {
   const w = useWallet();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg | null>(null);
-  const copy = p.claimable !== null ? claimCopy({ amount: p.claimable, isCaller: p.isCaller, outcome: p.outcome, usdso: formatDisplay(p.claimable, 2) }) : null;
+  const preCopy = p.outcome === "open" && p.settleable ? "This call is ready to settle. Claim records the outcome and pays out what you are owed, in one step." : null;
+  const copy = preCopy ?? (p.claimable !== null ? claimCopy({ amount: p.claimable, isCaller: p.isCaller, outcome: p.outcome, usdso: formatDisplay(p.claimable, 2) }) : null);
   if (!copy && !msg) return null;
 
   async function go() {
@@ -135,6 +138,44 @@ export function ClaimPanel(p: {
           </button>
         </>
       )}
+      <MsgLine m={msg} />
+    </div>
+  );
+}
+
+/** A compact Claim button for a list row: sends claim(id) and reports the result inline. */
+export function ClaimButton(p: { callId: bigint; amount: bigint; onDone: () => void }) {
+  const w = useWallet();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<Msg | null>(null);
+
+  async function go() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const hash = await send("claim", p.callId, w);
+      setMsg({ tone: "ok", text: "Claimed.", hash });
+      p.onDone();
+    } catch (e) {
+      const d = describeError(e);
+      setMsg(d.kind === "rejected" ? { tone: "info", text: "Nothing changed." } : { tone: "warn", text: d.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!w.address) {
+    return (
+      <button className="btn" onClick={() => w.connect()} disabled={w.connecting}>
+        Connect to claim
+      </button>
+    );
+  }
+  return (
+    <div>
+      <button className="btn btn-primary" onClick={go} disabled={busy}>
+        {busy ? "Waiting for your wallet..." : `Claim ${formatDisplay(p.amount, 2)} USDso`}
+      </button>
       <MsgLine m={msg} />
     </div>
   );

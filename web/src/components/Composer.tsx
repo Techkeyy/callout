@@ -5,12 +5,13 @@ import { decodeEventLog } from "viem";
 import { useWallet } from "@/lib/wallet";
 import { useMarkets } from "@/lib/useMarkets";
 import { ageLabel, markAgeSec, STALE_PRICE_COPY } from "@/lib/mark";
-import { callBookAbi, DEFAULT_BOND_USDSO, DEFAULT_MIN_BOND, describeError, erc20Abi, getCallBookAddress, NOTE_MAX } from "@/lib/callbook";
+import { callBookAbi, DEFAULT_MIN_BOND, describeError, erc20Abi, getCallBookAddress, NOTE_MAX } from "@/lib/callbook";
 import { DREAMDEX_APP_URL } from "@/lib/dex";
 import { publicClient, readMinBond } from "@/lib/calls";
 import { withRetry } from "@/lib/take";
 import { txUrl } from "@/lib/chain";
 import { alignToTick, displayDecimals, formatDisplay, formatPrice, parsePrice, roundToTick, toNumber, validatePrices } from "@/lib/prices";
+import { defaultBond, minBondFor, validatePostRules } from "@/lib/rules";
 import Ticket from "./Ticket";
 import Ladder from "./Ladder";
 
@@ -41,7 +42,9 @@ export default function Composer() {
   const [note, setNote] = useState("");
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState<null | "approve" | "wallet" | "chain">(null);
-  const [bondS, setBondS] = useState(String(DEFAULT_BOND_USDSO));
+  const [capacityS, setCapacityS] = useState("100");
+  const [bondS, setBondS] = useState("5");
+  const [bondEdited, setBondEdited] = useState(false);
   const [minBond, setMinBond] = useState<bigint>(DEFAULT_MIN_BOND);
   const [bondToken, setBondToken] = useState<`0x${string}` | null>(null);
   const [usdso, setUsdso] = useState<{ balance: bigint; allowance: bigint } | null>(null);
@@ -93,6 +96,14 @@ export default function Composer() {
     return () => clearInterval(t);
   }, [readUsdso]);
 
+  const capacity = parsePrice(capacityS);
+  // The bond follows the capacity (2% of it, never under the minimum) until the person types their own. A bond that falls below the rule is lifted.
+  useEffect(() => {
+    const need = minBondFor(capacity, minBond);
+    const cur = parsePrice(bondS);
+    if (!bondEdited || cur === null || cur < need) setBondS(formatPrice(defaultBond(capacity, minBond)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capacity, minBond, bondEdited]);
   const bond = parsePrice(bondS);
   const entry = parsePrice(entryS);
   const stop = parsePrice(stopS);
@@ -102,8 +113,8 @@ export default function Composer() {
   const problems = [...v.problems];
   if (offTick) problems.push(`Prices must move in steps of ${formatPrice(tick)}. Use "Snap to market steps".`);
   if (bond === null) problems.push("Enter a bond amount.");
-  else if (bond < minBond) problems.push(`Your bond must be at least ${formatDisplay(minBond, 0)} USDso.`);
-  else if (usdso && usdso.balance < bond) {
+  problems.push(...validatePostRules({ isLong, entry, stop, target, mark, capacity, bond, minBond, expirySecs: expiry }));
+  if (bond !== null && usdso && usdso.balance < bond) {
     problems.push(`You need ${formatDisplay(bond, 2)} USDso for this bond and have ${formatDisplay(usdso.balance, 2)}. Get test USDso in the dreamDEX testnet app, then try again.`);
   }
   const needsApproval = bond !== null && usdso !== null && usdso.allowance < bond;
@@ -126,12 +137,14 @@ export default function Composer() {
     if (mark !== null) setEntryS(formatPrice(alignToTick(mark, tick)));
   }
 
-  const valid = v.ok && !offTick && !noteTooLong && !!market && bond !== null && bond >= minBond && (!usdso || usdso.balance >= bond);
+  const valid = v.ok && !!market && bond !== null && problems.length === 0;
+  // Rule problems show as soon as the three levels are in, so nobody finds out at the wallet.
+  const showProblems = touched || (entry !== null && stop !== null && target !== null);
 
   async function post() {
     setTouched(true);
     setErr(null);
-    if (!valid || !market || entry === null || stop === null || target === null) return;
+    if (!valid || !market || entry === null || stop === null || target === null || capacity === null) return;
     if (!contract) {
       setErr("Posting is not switched on yet. The CallBook contract address is not set.");
       return;
@@ -158,7 +171,7 @@ export default function Composer() {
         if (aRc.status !== "success") throw new Error("approve reverted");
       }
       setBusy("wallet");
-      const args = [market.pool as `0x${string}`, isLong, entry, stop, target, BigInt(Math.floor(Date.now() / 1000) + expiry), note.trim(), bond] as const;
+      const args = [market.pool as `0x${string}`, isLong, entry, stop, target, BigInt(Math.floor(Date.now() / 1000) + expiry), note.trim(), capacity, bond] as const;
       // Somnia storage is expensive: use the node estimate and pad it 2x. Never a fixed low limit.
       const est = await publicClient.estimateContractGas({ address: contract, abi: callBookAbi, functionName: "post", args, account: w.address });
       const hash = await wc.writeContract({
@@ -344,13 +357,43 @@ export default function Composer() {
 
           <div className="field">
             <div className="field-head">
+              <label className="label" htmlFor="capacity">
+                Follower capacity (USDso)
+              </label>
+              <span className="hint num">bond is 2% of this</span>
+            </div>
+            <input
+              id="capacity"
+              className="input num"
+              inputMode="decimal"
+              autoComplete="off"
+              value={capacityS}
+              aria-invalid={touched && (capacity === null || capacity <= 0n)}
+              onChange={(e) => setCapacityS(e.target.value.replace(/[^\d.]/g, ""))}
+            />
+            <p className="hint">The most trade size your bond covers across everyone who takes this call. Once it is full, the app stops new takes.</p>
+          </div>
+
+          <div className="field">
+            <div className="field-head">
               <label className="label" htmlFor="bond">
                 Bond (USDso)
               </label>
-              <span className="hint num">min {formatDisplay(minBond, 0)}</span>
+              <span className="hint num">min {formatDisplay(minBondFor(capacity, minBond), 2)}</span>
             </div>
-            <input id="bond" className="input num" inputMode="decimal" autoComplete="off" value={bondS} aria-invalid={touched && bond === null} onChange={(e) => setBondS(e.target.value.replace(/[^\d.]/g, ""))} />
-            <p className="hint">Your bond backs the call. You get it back if it hits target or expires. If it stops out, it goes to the people who took it.</p>
+            <input
+              id="bond"
+              className="input num"
+              inputMode="decimal"
+              autoComplete="off"
+              value={bondS}
+              aria-invalid={touched && bond === null}
+              onChange={(e) => {
+                setBondEdited(true);
+                setBondS(e.target.value.replace(/[^\d.]/g, ""));
+              }}
+            />
+            <p className="hint">Your bond backs the call. Hit the target: it comes back. Stopped: it goes to the people who took it. Expired: it&apos;s settled at the price; if the market moved against your call, takers get a share.</p>
             {usdso && (
               <p className="hint num">
                 Your USDso: {formatDisplay(usdso.balance, 2)}.{" "}
@@ -376,7 +419,7 @@ export default function Composer() {
             <p className="hint">The note is part of the record and cannot be changed later.</p>
           </div>
 
-          {touched && problems.length > 0 && (
+          {showProblems && problems.length > 0 && (
             <ul className="problems" role="alert">
               {problems.map((p) => (
                 <li key={p}>{p}</li>
@@ -411,7 +454,7 @@ export default function Composer() {
         </form>
 
         <aside className="desk-aside stack" aria-label="Preview">
-          <Ticket preview market={market?.name ?? "Pick a market"} isLong={isLong} entry={entry} stop={stop} target={target} dp={dp} note={note} secsLeft={expiry} />
+          <Ticket preview market={market?.name ?? "Pick a market"} isLong={isLong} entry={entry} stop={stop} target={target} dp={dp} note={note} secsLeft={expiry} capacity={capacity} />
           {showLadder && (
             <div className="ladder-card">
               <p className="ladder-title">

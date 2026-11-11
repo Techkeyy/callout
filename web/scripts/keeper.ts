@@ -1,4 +1,5 @@
-// Keeper: records outcomes on CallBook v3 for calls whose level was crossed or that have expired.
+// Keeper: records outcomes on CallBook v4 for calls whose level was crossed or that have expired.
+// Same order as the contract (src/lib/outcome.ts deriveOutcome): price first, then the clock. It only ever calls resolve().
 // Run once:   node --experimental-strip-types scripts/keeper.ts
 // Run forever: node --experimental-strip-types scripts/keeper.ts --watch      (polls every 20s)
 // Only look:   node --experimental-strip-types scripts/keeper.ts --dry

@@ -7,7 +7,7 @@ import { shortAddress } from "@/lib/time";
 import { NOT_CONNECTED_COPY, UNREACHABLE_COPY } from "@/lib/readstate";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Leaderboard", description: "Callers ranked by how often their calls hit target before the stop." };
+export const metadata: Metadata = { title: "Leaderboard", description: "Callers ranked by how often their calls hit the target before a stop or a losing expiry." };
 
 export default async function BoardPage() {
   const board = await loadBoard();
@@ -17,7 +17,7 @@ export default async function BoardPage() {
       <div className="page-head">
         <h1>Leaderboard</h1>
         <p className="hint">
-          Callers ranked by hit rate: calls that reached the target, out of those that hit the target or the stop. Expired calls do not count. A caller needs at least one resolved call.
+          Callers ranked by hit rate: calls that reached the target, out of those that hit the target, hit the stop, or expired with the price against the call. Expiring in profit does not count either way. A caller needs at least one resolved call.
         </p>
       </div>
       {!board.configured ? (
@@ -59,7 +59,8 @@ export default async function BoardPage() {
                     <th scope="col" className="n">Hit rate</th>
                     <th scope="col" className="n">Hit</th>
                     <th scope="col" className="n">Stopped</th>
-                    <th scope="col" className="n">Expired</th>
+                    <th scope="col" className="n">Expired losses</th>
+                    <th scope="col" className="n">Expired in profit</th>
                     <th scope="col" className="n">Takers</th>
                     <th scope="col" className="n">Fees earned</th>
                   </tr>
@@ -76,7 +77,8 @@ export default async function BoardPage() {
                       <td className="n num">{r.rate === null ? "-" : `${Math.round(r.rate)}%`}</td>
                       <td className="n num">{r.hits}</td>
                       <td className="n num">{r.stops}</td>
-                      <td className="n num">{r.expired}</td>
+                      <td className="n num">{r.expiredLosses}</td>
+                      <td className="n num">{r.expired - r.expiredLosses}</td>
                       <td className="n num">{r.takers}</td>
                       <td className="n num">{formatDisplay(r.fees, 4)} USDso</td>
                     </tr>
@@ -86,7 +88,7 @@ export default async function BoardPage() {
             </div>
           )}
           <p className="hint" style={{ marginBottom: "var(--s-16)" }}>
-            Hits, stops and expired come from each caller&apos;s on-chain record. Takers and fees count the newest {board.scanned} of {board.total} calls.
+            Hits, stops and expiries come from each caller&apos;s on-chain record. A losing expiry counts as a miss, the same as a stop. Takers and fees count the newest {board.scanned} of {board.total} calls.
           </p>
         </>
       )}

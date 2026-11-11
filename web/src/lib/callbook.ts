@@ -12,6 +12,8 @@ export interface Call {
   entry: bigint;
   stop: bigint;
   target: bigint;
+  /** Follower notional the bond covers, 18-decimal USDso. */
+  capacity: bigint;
   note: string;
 }
 
@@ -25,20 +27,26 @@ export function getCallBookAddress(): `0x${string}` | null {
 }
 
 export const ERROR_MESSAGES: Record<string, string> = {
-  BadPrices: "The prices do not line up. A long needs stop below entry below target, a short the reverse.",
+  BadPrices: "The prices do not line up. A long needs stop below the live price and entry, target above both. A short is the reverse.",
   BadExpiry: "That expiry is not allowed. Pick one of the listed durations.",
   NoteTooLong: "Your note is too long. Keep it to 280 characters.",
   ZeroPool: "No market was picked. Choose a market and try again.",
+  PoolNotRegistered: "This market is not registered on dreamDEX, so it cannot take calls.",
+  EntryOffMarket: "Your entry is more than 0.5% away from the live price. Move it closer, or use the live price.",
+  StopTooTight: "Your stop is too close to your entry. Keep it at least 0.1% away.",
+  StopTooWide: "Your stop is too far from your entry. Keep it within 10%.",
+  RewardBelowRisk: "Your target must be at least as far from your entry as your stop is.",
+  ZeroCapacity: "Enter a follower capacity above zero.",
   NotCaller: "Only the person who posted this call can close it.",
   AlreadyClosed: "This call is already closed.",
   NoSuchCall: "This call does not exist.",
   AlreadyOpen: "You already have an open call on this market. Close it first.",
-  BondTooSmall: "Your bond is below the minimum. Raise it and try again.",
+  BondTooSmall: "Your bond is too small. It must be at least the minimum and at least 2% of your follower capacity.",
   TransferFailed: "The bond could not be moved. Check that you have enough USDso and that you approved it, then try again.",
-  StalePrice: "The price feed is stale right now, so the outcome cannot be recorded yet. Try again in a moment.",
+  StalePrice: "The price feed is stale right now, so the call cannot be checked or recorded yet. Try again in a moment.",
   NotResolvable: "The price is no longer past the target or the stop, so there is nothing to record yet. Nothing changed.",
   AlreadyResolved: "This call has already been resolved.",
-  NotClaimable: "This call has not been resolved yet, so there is nothing to claim.",
+  NotClaimable: "This call cannot be settled yet, so there is nothing to claim.",
   AlreadyClaimed: "You have already claimed from this call.",
   NothingToClaim: "There is nothing for you to claim on this call.",
 };

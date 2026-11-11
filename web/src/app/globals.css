@@ -538,6 +538,16 @@ main {
 .ticket-note.is-empty {
   color: var(--ink-3);
 }
+.ticket-cap,
+.ticket-settle {
+  margin: var(--s-3) 0 0;
+  font-size: var(--t-14);
+  color: var(--ink-3);
+}
+.ticket-settle {
+  color: var(--ink);
+  font-weight: 600;
+}
 .ticket-stub {
   min-height: var(--stub);
   padding: 0 var(--s-5);

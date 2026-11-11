@@ -199,7 +199,7 @@ export function settledOr<T>(r: PromiseSettledResult<T>, prev: T): T {
 
 // ---------- what blocks a take ----------
 
-export type BlockReason = "resolved" | "closed" | "expired" | "stopHit" | "targetHit" | "isCaller" | "wrongNetwork" | "stalePrice";
+export type BlockReason = "resolved" | "closed" | "expired" | "stopHit" | "targetHit" | "isCaller" | "wrongNetwork" | "stalePrice" | "full" | "capacityUnknown";
 
 export const BLOCK_COPY: Record<BlockReason, string> = {
   resolved: "This call has been resolved. It can no longer be taken.",
@@ -209,6 +209,8 @@ export const BLOCK_COPY: Record<BlockReason, string> = {
   targetHit: "This call already reached its target, so it can no longer be taken.",
   isCaller: "This is your call. Share the link so others can take it.",
   stalePrice: "Price feed is stale right now. Try again in a moment.",
+  full: "This call is full: its bond covers no more takers.",
+  capacityUnknown: "Could not check how much of this call's bond is still free. Refresh in a moment.",
   wrongNetwork: "Your wallet is on a different network. Switch to Somnia Tokyo to continue.",
 };
 
@@ -222,6 +224,8 @@ export function blockReason(i: {
   target: bigint;
   /** False when the price feed is stale or unread. Defaults to true. */
   priceOk?: boolean;
+  /** Notional the bond still covers (capacity minus covered). Null when it could not be read. Leave out to skip the check. */
+  remaining?: bigint | null;
 }): BlockReason | null {
   if (i.status === "resolved") return "resolved";
   if (i.status === "closed") return "closed";
@@ -232,6 +236,8 @@ export function blockReason(i: {
     if (i.isLong ? i.mark <= i.stop : i.mark >= i.stop) return "stopHit";
     if (i.isLong ? i.mark >= i.target : i.mark <= i.target) return "targetHit";
   }
+  if (i.remaining === null) return "capacityUnknown";
+  if (i.remaining !== undefined && i.remaining <= 0n) return "full";
   if (i.wrongNetwork) return "wrongNetwork";
   return null;
 }

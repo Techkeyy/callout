@@ -29,6 +29,7 @@ import {
   unrealizedPnl,
   type Step,
 } from "@/lib/take";
+import { capToRemaining } from "@/lib/rules";
 import * as dex from "@/lib/dex";
 
 interface Props {
@@ -40,6 +41,8 @@ interface Props {
   target: bigint;
   status: "open" | "expired" | "closed" | "resolved";
   market: ClientMarket | null;
+  /** Notional the bond still covers (capacity minus covered), or null when the take ledger could not be read. */
+  remaining: bigint | null;
   /** Called after a take or a close so the card's counters refresh. */
   onChanged: () => void;
 }
@@ -57,7 +60,7 @@ function trimUnits(v: bigint, d: number, max = 8): string {
   return fr ? `${i}.${fr}` : i;
 }
 
-export default function TakePanel({ callId, caller, isLong, entry, stop, target, status, market, onChanged }: Props) {
+export default function TakePanel({ callId, caller, isLong, entry, stop, target, status, market, remaining, onChanged }: Props) {
   const w = useWallet();
   const [rd, setRd] = useState<dex.Readiness | null>(null);
   const [pos, setPos] = useState<dex.PositionRead | null>(null);
@@ -94,7 +97,10 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
 
   const notionalUsd = preset === "custom" ? Number(custom) || 0 : preset;
   const baseRules = market ? { baseDecimals: market.baseDecimals, lotSize: market.lotSize, minQuantity: market.minQuantity, maxQuantity: null } : null;
-  const desiredNotional = BigInt(Math.round(notionalUsd * 100)) * (E18 / 100n);
+  const wantedNotional = BigInt(Math.round(notionalUsd * 100)) * (E18 / 100n);
+  // Never plan a size past what the bond covers, so nobody takes an uncovered position through the app.
+  const sized = capToRemaining(wantedNotional, remaining ?? 0n);
+  const desiredNotional = sized.notional;
   // Margin is judged on the size the user WANTS. The chain's max size is 0 for an account with no margin, so it must not shrink this.
   const desiredQty = market && baseRules && notionalUsd > 0 ? notionalToQuantity(desiredNotional, market.markPrice, baseRules) : 0n;
   const marginNeeded = market && desiredQty > 0n ? marginForTake(notionalOf(desiredQty, market.markPrice, market.baseDecimals), imfBps ?? undefined, market.markPrice, stop, mmBps ?? undefined) : 0n;
@@ -104,6 +110,8 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
       ? notionalToQuantity(desiredNotional, market.markPrice, { ...baseRules, maxQuantity: limit.maxQuantity })
       : desiredQty;
   const qtyNotional = market ? notionalOf(qty, market.markPrice, market.baseDecimals) : 0n;
+  // The smallest legal order can still be bigger than what is left. That is not allowed either.
+  const overCap = remaining !== null && qtyNotional > remaining;
 
   const refresh = useCallback(async () => {
     const c = ctx();
@@ -160,7 +168,7 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
 
   const dp = market ? displayDecimals(market.tickSize) : 2;
   const mark = market?.markPrice ?? null;
-  const block = blockReason({ status, isCaller, wrongNetwork: w.wrongChain, isLong, mark, stop, target, priceOk: market?.markOk ?? true });
+  const block = blockReason({ status, isCaller, wrongNetwork: w.wrongChain, isLong, mark, stop, target, priceOk: market?.markOk ?? true, remaining });
   const step: Step = deriveStep({
     connected: !!w.address,
     stt: rd?.stt ?? null,
@@ -341,6 +349,11 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
         ))}
       </ol>
 
+      {!block && remaining !== null && (
+        <p className="hint num">
+          Bond covers {formatDisplay(remaining, 2)} more USDso of takes.
+        </p>
+      )}
       {block ? (
         <>
           <p className={`notice ${block === "isCaller" ? "" : "is-warn"}`}>{BLOCK_COPY[block]}</p>
@@ -480,9 +493,15 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
                   {limit.limitedBy === "voucherBlocked" ? "Practice USDso cannot be used on this market. Deposit real test USDso instead." : "This size cannot be placed right now. Try a smaller size."}
                 </p>
               )}
-              {qty === 0n && <p className="notice is-warn">Enter a size in dollars to continue.</p>}
+              {sized.capped && (
+                <p className="notice" role="status">
+                  Size capped at ${formatDisplay(sized.notional, 2)}. The bond only covers that much more.
+                </p>
+              )}
+              {overCap && <p className="notice is-warn">The bond covers less than the smallest order. This call is as good as full.</p>}
+              {qty === 0n && !overCap && <p className="notice is-warn">Enter a size in dollars to continue.</p>}
               <p className="hint">Your wallet will ask twice: first to open the position, then to set the stop at {formatDisplay(stop, dp)} and the target at {formatDisplay(target, dp)}.</p>
-              <button className="btn btn-primary btn-wide" onClick={doTake} disabled={busy !== null || qty === 0n || stopUnsafe || (limit !== null && !limit.placeable)}>
+              <button className="btn btn-primary btn-wide" onClick={doTake} disabled={busy !== null || qty === 0n || overCap || stopUnsafe || (limit !== null && !limit.placeable)}>
                 {busy === "take" || busy === "arm" ? "Waiting for your wallet..." : "Take this call"}
               </button>
             </>

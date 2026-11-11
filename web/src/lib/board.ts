@@ -1,4 +1,4 @@
-import { readCall, readCallCount, readRecord, readTakes } from "./calls";
+import { mapLimit, newestIds, readCall, readCallCount, readRecord, readTakes } from "./calls";
 import type { BoardRow } from "./outcome";
 
 const CAP = 300;
@@ -18,30 +18,13 @@ export interface Board {
   unreachable: boolean;
 }
 
-async function mapLimit<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (true) {
-        const i = next++;
-        if (i >= items.length) return;
-        out[i] = await fn(items[i]);
-      }
-    }),
-  );
-  return out;
-}
-
 async function build(): Promise<Board> {
   const count = await readCallCount({ retries: 1, timeoutMs: 8000 });
   if (count === null) {
     return { rows: [], partial: true, scanned: 0, total: 0, configured: true, unreachable: true };
   }
   const total = Number(count);
-  const first = Math.max(1, total - CAP + 1);
-  const ids: bigint[] = [];
-  for (let i = total; i >= first; i--) ids.push(BigInt(i));
+  const ids = newestIds(total, CAP);
 
   const opts = { retries: 1, timeoutMs: 8000 };
   const per = await mapLimit(ids, CONCURRENCY, async (id) => {
@@ -72,7 +55,7 @@ async function build(): Promise<Board> {
       return;
     }
     const a = agg.get(caller)!;
-    rows.push({ caller, hits: rec.hits, stops: rec.stops, expired: rec.expired, takers: a.takers, fees: a.fees });
+    rows.push({ caller, hits: rec.hits, stops: rec.stops, expired: rec.expired, expiredLosses: rec.expiredLosses, takers: a.takers, fees: a.fees });
   });
   return { rows, partial, scanned: ids.length, total, configured: true, unreachable: false };
 }

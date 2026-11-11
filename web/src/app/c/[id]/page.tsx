@@ -76,11 +76,12 @@ export default async function CallPage({ params }: Params) {
         stop={c.stop.toString()}
         target={c.target.toString()}
         note={c.note}
+        capacity={c.capacity.toString()}
         serverNow={Math.floor(Date.now() / 1000)}
         // Metadata only: the live price comes from the client poll, so a snapshot is never shown as live.
         initialMarket={m ? { name: m.name, tickSize: m.tickSize, markPrice: m.markPrice, markOk: false, readAt: 0 } : null}
-        result={result ? { outcome: result.outcome, resolvedAt: result.resolvedAt.toString(), price: result.price.toString(), bond: result.bond.toString(), claimedTotal: result.claimedTotal.toString() } : null}
-        takes={takes ? { takers: takes.takers, fills: takes.fills, fees: takes.fees.toString() } : null}
+        result={result ? { outcome: result.outcome, resolvedAt: result.resolvedAt.toString(), price: result.price.toString(), bond: result.bond.toString(), forfeit: result.forfeit.toString(), claimedTotal: result.claimedTotal.toString() } : null}
+        takes={takes ? { takers: takes.takers, fills: takes.fills, fees: takes.fees.toString(), covered: takes.covered.toString() } : null}
       />
     </div>
   );

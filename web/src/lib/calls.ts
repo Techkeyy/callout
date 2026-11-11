@@ -60,6 +60,8 @@ export interface TakeStats {
   fills: number;
   takers: number;
   fees: bigint;
+  /** Follower notional inside the call's capacity, 18-decimal USDso. */
+  covered: bigint;
 }
 
 /** Take counts for a call. Null when the contract is not set or the read failed. */
@@ -71,8 +73,9 @@ export async function readTakes(id: bigint, o?: ReadOpts): Promise<TakeStats | n
       fills: number;
       takers: number;
       fees: bigint;
+      covered: bigint;
     };
-    return { fills: Number(t.fills), takers: Number(t.takers), fees: t.fees };
+    return { fills: Number(t.fills), takers: Number(t.takers), fees: t.fees, covered: BigInt(t.covered) };
   } catch {
     return null;
   }
@@ -100,6 +103,8 @@ export interface ResultData {
   resolvedAt: bigint;
   price: bigint;
   bond: bigint;
+  /** The part of the bond that goes to takers. */
+  forfeit: bigint;
   claimedTotal: bigint;
 }
 
@@ -113,15 +118,23 @@ export async function readResult(id: bigint, o?: ReadOpts): Promise<ResultData |
       resolvedAt: bigint;
       price: bigint;
       bond: bigint;
+      forfeit: bigint;
       claimedTotal: bigint;
     };
-    return { outcome: outcomeFromCode(r.outcome), resolvedAt: BigInt(r.resolvedAt), price: BigInt(r.price), bond: BigInt(r.bond), claimedTotal: BigInt(r.claimedTotal) };
+    return {
+      outcome: outcomeFromCode(r.outcome),
+      resolvedAt: BigInt(r.resolvedAt),
+      price: BigInt(r.price),
+      bond: BigInt(r.bond),
+      forfeit: BigInt(r.forfeit),
+      claimedTotal: BigInt(r.claimedTotal),
+    };
   } catch {
     return null;
   }
 }
 
-/** A caller's hits, stops and expired counts. */
+/** A caller's hits, stops, expired and expired-loss counts. */
 export async function readRecord(caller: `0x${string}`, o?: ReadOpts): Promise<RecordCounts | null> {
   const address = getCallBookAddress();
   if (!address) return null;
@@ -130,8 +143,9 @@ export async function readRecord(caller: `0x${string}`, o?: ReadOpts): Promise<R
       hits: number;
       stops: number;
       expired: number;
+      expiredLosses: number;
     };
-    return { hits: Number(r.hits), stops: Number(r.stops), expired: Number(r.expired) };
+    return { hits: Number(r.hits), stops: Number(r.stops), expired: Number(r.expired), expiredLosses: Number(r.expiredLosses) };
   } catch {
     return null;
   }
@@ -168,4 +182,104 @@ export async function readCallCount(o?: ReadOpts): Promise<bigint | null> {
   } catch {
     return null;
   }
+}
+
+/** Follower notional a wallet has covered on a call, or null when unreadable or the contract is not set. */
+export async function readCovered(id: bigint, who: `0x${string}`, o?: ReadOpts): Promise<bigint | null> {
+  const address = getCallBookAddress();
+  if (!address) return null;
+  try {
+    return BigInt((await robust(() => publicClient.readContract({ address, abi: callBookAbi, functionName: "coveredOf", args: [id, who] }), o)) as bigint);
+  } catch {
+    return null;
+  }
+}
+
+/** Whether a wallet has taken a call, or null when unreadable or the contract is not set. */
+export async function readHasTaken(id: bigint, who: `0x${string}`, o?: ReadOpts): Promise<boolean | null> {
+  const address = getCallBookAddress();
+  if (!address) return null;
+  try {
+    return (await robust(() => publicClient.readContract({ address, abi: callBookAbi, functionName: "hasTaken", args: [id, who] }), o)) as boolean;
+  } catch {
+    return null;
+  }
+}
+
+/** The Somnia Reactivity subscription that settles a call at its expiry, or null when unreadable. */
+export async function readExpirySubscription(id: bigint, o?: ReadOpts): Promise<bigint | null> {
+  const address = getCallBookAddress();
+  if (!address) return null;
+  try {
+    return BigInt((await robust(() => publicClient.readContract({ address, abi: callBookAbi, functionName: "expirySubscriptionOf", args: [id] }), o)) as bigint);
+  } catch {
+    return null;
+  }
+}
+
+/** Run `fn` over items with at most `limit` in flight. Results keep the input order. */
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (true) {
+        const i = next++;
+        if (i >= items.length) return;
+        out[i] = await fn(items[i]);
+      }
+    }),
+  );
+  return out;
+}
+
+/** The newest `limit` call ids, newest first, for a total of `count` calls. */
+export function newestIds(count: number, limit: number): bigint[] {
+  const first = Math.max(1, count - limit + 1);
+  const ids: bigint[] = [];
+  for (let i = count; i >= first; i--) ids.push(BigInt(i));
+  return ids;
+}
+
+export const TAKES_SCAN = 100;
+
+export interface TakenCall {
+  id: bigint;
+  pool: `0x${string}`;
+  isLong: boolean;
+  outcome: Outcome;
+  covered: bigint;
+  /** Null when that read failed. */
+  claimable: bigint | null;
+}
+
+export type TakenResult =
+  | { status: "ok"; rows: TakenCall[]; scanned: number; total: number; partial: boolean }
+  | { status: "unavailable" }
+  | { status: "error"; message: string };
+
+/** The calls a wallet took, found by scanning the newest TAKES_SCAN call ids with hasTaken. Partial when some reads failed. */
+export async function readTakenCalls(who: `0x${string}`): Promise<TakenResult> {
+  if (!getCallBookAddress()) return { status: "unavailable" };
+  const count = await readCallCount({ retries: 1, timeoutMs: 8000 });
+  if (count === null) return { status: "error", message: UNREACHABLE_COPY };
+  const ids = newestIds(Number(count), TAKES_SCAN);
+  const opts = { retries: 1, timeoutMs: 8000 };
+  let partial = false;
+  const taken = await mapLimit(ids, 10, async (id) => {
+    const h = await readHasTaken(id, who, opts);
+    if (h === null) partial = true;
+    return h === true ? id : null;
+  });
+  const mine = taken.filter((x): x is bigint => x !== null);
+  const rows = await mapLimit(mine, 6, async (id): Promise<TakenCall | null> => {
+    const [c, r, cov, claimable] = await Promise.all([readCall(id, opts), readResult(id, opts), readCovered(id, who, opts), readClaimable(id, who, opts)]);
+    if (c.status !== "ok" || !r || cov === null) {
+      partial = true;
+      return null;
+    }
+    if (claimable === null) partial = true;
+    return { id, pool: c.call.pool, isLong: c.call.isLong, outcome: r.outcome, covered: cov, claimable };
+  });
+  return { status: "ok", rows: rows.filter((x): x is TakenCall => x !== null), scanned: ids.length, total: Number(count), partial };
 }

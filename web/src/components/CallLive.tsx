@@ -4,8 +4,9 @@ import { useWallet } from "@/lib/wallet";
 import { useMarkets } from "@/lib/useMarkets";
 import { ageLabel, markAgeSec, STALE_PRICE_COPY } from "@/lib/mark";
 import { callBookAbi, describeError, getCallBookAddress } from "@/lib/callbook";
-import { publicClient, readClaimable, readRecord, readResult, readTakes } from "@/lib/calls";
-import { recordLine, type Outcome, type RecordCounts } from "@/lib/outcome";
+import { publicClient, readClaimable, readCovered, readRecord, readResult, readTakes } from "@/lib/calls";
+import { deriveOutcome, recordLine, settlementLine, type Outcome, type RecordCounts } from "@/lib/outcome";
+import { remainingCapacity } from "@/lib/rules";
 import { ClaimPanel, ResolvePanel } from "./ResolveClaim";
 import dynamic from "next/dynamic";
 
@@ -36,10 +37,12 @@ interface Props {
   stop: string;
   target: string;
   note: string;
+  /** Follower capacity, 18-decimal USDso. */
+  capacity: string;
   serverNow: number;
   initialMarket: { name: string; tickSize: string; markPrice: string; markOk: boolean; readAt: number } | null;
-  takes: { takers: number; fills: number; fees: string } | null;
-  result: { outcome: Outcome; resolvedAt: string; price: string; bond: string; claimedTotal: string } | null;
+  takes: { takers: number; fills: number; fees: string; covered: string } | null;
+  result: { outcome: Outcome; resolvedAt: string; price: string; bond: string; forfeit: string; claimedTotal: string } | null;
 }
 
 export default function CallLive(p: Props) {
@@ -54,12 +57,13 @@ export default function CallLive(p: Props) {
   const [result, setResult] = useState(p.result);
   const [record, setRecord] = useState<RecordCounts | null>(null);
   const [claimable, setClaimable] = useState<bigint | null>(null);
+  const [myCovered, setMyCovered] = useState<bigint | null>(null);
   const outcome: Outcome = result?.outcome ?? "open";
   const resolved = outcome !== "open";
 
   async function refreshResult() {
     const [r, rec] = await Promise.all([readResult(BigInt(p.id)), readRecord(p.caller as `0x${string}`)]);
-    if (r) setResult({ outcome: r.outcome, resolvedAt: r.resolvedAt.toString(), price: r.price.toString(), bond: r.bond.toString(), claimedTotal: r.claimedTotal.toString() });
+    if (r) setResult({ outcome: r.outcome, resolvedAt: r.resolvedAt.toString(), price: r.price.toString(), bond: r.bond.toString(), forfeit: r.forfeit.toString(), claimedTotal: r.claimedTotal.toString() });
     if (rec) setRecord(rec);
   }
   // The caller's record loads in the browser so the page itself stays fast.
@@ -75,6 +79,15 @@ export default function CallLive(p: Props) {
     setClaimable(await readClaimable(BigInt(p.id), w.address));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [w.address, resolved, p.id]);
+  // Whether this wallet has a covered take: only then is a claim on a not yet recorded call worth offering.
+  useEffect(() => {
+    let alive = true;
+    setMyCovered(null);
+    if (w.address) readCovered(BigInt(p.id), w.address).then((c) => alive && setMyCovered(c));
+    return () => {
+      alive = false;
+    };
+  }, [w.address, p.id, takes?.fills]);
   useEffect(() => {
     refreshClaimable();
   }, [refreshClaimable]);
@@ -84,7 +97,7 @@ export default function CallLive(p: Props) {
     for (let n = 0; n < 12; n++) {
       const t = await readTakes(BigInt(p.id));
       if (t) {
-        setTakes({ takers: t.takers, fills: t.fills, fees: t.fees.toString() });
+        setTakes({ takers: t.takers, fills: t.fills, fees: t.fees.toString(), covered: t.covered.toString() });
         if (t.fills !== start) return;
       }
       await new Promise((r) => setTimeout(r, 2500));
@@ -109,6 +122,13 @@ export default function CallLive(p: Props) {
   const secsLeft = Math.max(0, Number(p.expiresAt) - now);
   const dist = mark !== null ? ladderDistances(p.isLong, mark, toNumber(stop), toNumber(target)) : null;
   const isMine = !!w.address && w.address.toLowerCase() === p.caller.toLowerCase();
+  const capacity = BigInt(p.capacity);
+  const covered = takes ? BigInt(takes.covered) : null;
+  const remaining = covered === null ? null : remainingCapacity(capacity, covered);
+  // Same order as the contract: price first, then the clock. claim() settles such a call before it pays.
+  const settleable = !resolved && deriveOutcome({ isLong: p.isLong, mark: live?.markPrice ?? null, markOk: !!live && live.markOk, stop, target, nowSec: now, expiresAtSec: Number(p.expiresAt) }) !== null;
+  const canClaimEarly = settleable && (isMine || (myCovered !== null && myCovered > 0n));
+  const settlement = result ? settlementLine({ outcome, priceText: formatDisplay(BigInt(result.price), dp), forfeit: BigInt(result.forfeit), bond: BigInt(result.bond), covered }) : null;
 
   async function close() {
     const addr = getCallBookAddress();
@@ -134,9 +154,9 @@ export default function CallLive(p: Props) {
   return (
     <div className="call-grid">
       <div className="stack">
-        <Ticket id={BigInt(p.id)} market={name} isLong={p.isLong} entry={entry} stop={stop} target={target} dp={dp} note={p.note} caller={p.caller} status={status} secsLeft={secsLeft} outcome={outcome} bond={result ? BigInt(result.bond) : null} recordLine={recordLine(record)} />
+        <Ticket id={BigInt(p.id)} market={name} isLong={p.isLong} entry={entry} stop={stop} target={target} dp={dp} note={p.note} caller={p.caller} status={status} secsLeft={secsLeft} outcome={outcome} bond={result ? BigInt(result.bond) : null} capacity={capacity} covered={covered} settlement={settlement} recordLine={recordLine(record)} />
         {!resolved && <ResolvePanel callId={BigInt(p.id)} isLong={p.isLong} stop={stop} target={target} expiresAt={Number(p.expiresAt)} nowSec={now} market={live} onDone={refreshResult} />}
-        {resolved && <ClaimPanel callId={BigInt(p.id)} outcome={outcome} claimable={claimable} isCaller={isMine} onDone={() => { refreshResult(); refreshClaimable(); }} />}
+        {(resolved || canClaimEarly) && <ClaimPanel callId={BigInt(p.id)} outcome={outcome} claimable={claimable} isCaller={isMine} settleable={canClaimEarly} onDone={() => { refreshResult(); refreshClaimable(); }} />}
         <TakePanel
           callId={p.id}
           caller={p.caller as `0x${string}`}
@@ -146,6 +166,7 @@ export default function CallLive(p: Props) {
           target={target}
           status={resolved ? "resolved" : status}
           market={live}
+          remaining={remaining}
           onChanged={refreshTakes}
         />
         <div className="panel">
@@ -173,7 +194,7 @@ export default function CallLive(p: Props) {
         {isMine && status === "open" && !resolved && (
           <div className="panel">
             <h2>Close this call</h2>
-            <p className="hint">Closing stops new takes. The call can still be resolved until it expires, and your bond stays locked until then.</p>
+            <p className="hint">Closing stops new takes. The call can still be resolved until it expires, and your bond stays locked until the call settles.</p>
             {err && (
               <p className="notice is-warn" role="alert">
                 {err}

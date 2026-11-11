@@ -4,6 +4,7 @@ import { readCall, readCallsOf, readRecord, readResult, readTakes } from "@/lib/
 import RowClaim from "@/components/RowClaim";
 import { hitRate, OUTCOME_LABEL, recordLine } from "@/lib/outcome";
 import Earnings from "@/components/EarningsLazy";
+import Takes from "@/components/TakesLazy";
 import { NOT_CONNECTED_COPY, UNREACHABLE_COPY } from "@/lib/readstate";
 import { getMarketMeta } from "@/lib/markets";
 import { callStatus, shortAddress } from "@/lib/time";
@@ -65,11 +66,15 @@ export default async function CallerPage({ params }: { params: Promise<{ address
                   <dd className="num">{record.expired}</dd>
                 </div>
                 <div>
+                  <dt>Expired losses</dt>
+                  <dd className="num">{record.expiredLosses}</dd>
+                </div>
+                <div>
                   <dt>Hit rate</dt>
-                  <dd className="num">{hitRate(record.hits, record.stops) === null ? "-" : `${Math.round(hitRate(record.hits, record.stops)!)}%`}</dd>
+                  <dd className="num">{hitRate(record.hits, record.stops, record.expiredLosses) === null ? "-" : `${Math.round(hitRate(record.hits, record.stops, record.expiredLosses)!)}%`}</dd>
                 </div>
               </dl>
-              <p className="hint">{recordLine(record)}. Expired calls do not count toward the hit rate.</p>
+              <p className="hint">{recordLine(record)}. Hit rate is hits out of hits, stops and expired losses. A call that expires in profit does not count either way.</p>
             </>
           )}
         </section>
@@ -137,6 +142,7 @@ export default async function CallerPage({ params }: { params: Promise<{ address
           })}
         </ul>
       )}
+      <Takes address={who} />
     </div>
   );
 }

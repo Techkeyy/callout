@@ -1,6 +1,6 @@
-// Real-chain proof of the v3 loop, through the same lib code the UI calls (src/lib/dex.ts, take.ts, outcome.ts).
+// Real-chain proof of the v4 loop, through the same lib code the UI calls (src/lib/dex.ts, take.ts, outcome.ts).
 // Run: node --experimental-strip-types scripts/take-e2e.ts
-// Flow: caller approves and posts a call with a bond whose stop and target sit one tick from the mark, the follower
+// Flow: caller approves and posts a call with a capacity, a bond of 2% of it, and a stop and target 0.15% from the mark (v4 needs at least 0.1%), the follower
 // takes it, anyone records the outcome with resolve(), then the winner claims. Prints every tx hash.
 // Keys are read at runtime from ../spike/.env and never printed or copied.
 import fs from "node:fs";
@@ -86,13 +86,15 @@ for (let n = 0; n < 45 && !(live && live.markOk); n++) {
 if (!live || !live.markOk) throw new Error("The price feed stayed stale for 3 minutes. Try again later.");
 market.markPrice = BigInt(live.markPrice);
 const entry = alignToTick(market.markPrice, market.tickSize);
-const target = entry + market.tickSize; // one tick above
-const stop = entry - market.tickSize; // one tick below
+const step = alignToTick((entry * 15n) / 10_000n, market.tickSize) || market.tickSize; // 0.15%, the v4 minimum stop is 0.1%
+const target = entry + step;
+const stop = entry - step;
 console.log("CallBook", CALL_BOOK, "| mark", u(market.markPrice), "| entry", u(entry), "stop", u(stop), "target", u(target));
 
 const minBond = (await read("minBond")) as bigint;
 const bondToken = (await read("bondToken")) as `0x${string}`;
 const bond = minBond;
+const capacity = bond * 50n; // the bond must be at least 2% of capacity
 const cctx: dex.Ctx = { fx: caller.fx, pub: pub as any, wc: caller.wc, account: caller.address, market };
 const fctx: dex.Ctx = { fx: follower.fx, pub: pub as any, wc: follower.wc, account: follower.address, market };
 
@@ -108,7 +110,7 @@ if (allowance < bond) {
 const openId = (await read("openCallOf", [caller.address, market.pool])) as bigint;
 if (openId !== 0n) throw new Error(`caller already has open call #${openId} on this market. Resolve or let it expire first.`);
 const expiresAt = BigInt(Math.floor(Date.now() / 1000) + 3600);
-const posted = await write(caller, CALL_BOOK, callBookAbi, "post", [market.pool, true, entry, stop, target, expiresAt, "v3 proof: stop and target one tick from the mark", bond]);
+const posted = await write(caller, CALL_BOOK, callBookAbi, "post", [market.pool, true, entry, stop, target, expiresAt, "v4 proof: stop and target 0.15% from the mark", capacity, bond]);
 note("post", posted.hash);
 let id = 0n;
 for (const log of posted.rc.logs) {
@@ -164,7 +166,7 @@ for (let n = 0; n < 60 && !resolved; n++) {
 if (!resolved) throw new Error("the mark did not cross a level in 4 minutes. The call stays open; run the keeper later.");
 const res = (await read("getResult", [id])) as any;
 const rec = (await read("getRecord", [caller.address])) as any;
-console.log("   result:", outcomeFromCode(res.outcome), "at price", u(BigInt(res.price)), "| caller record:", recordLine({ hits: Number(rec.hits), stops: Number(rec.stops), expired: Number(rec.expired) }));
+console.log("   result:", outcomeFromCode(res.outcome), "at price", u(BigInt(res.price)), "| caller record:", recordLine({ hits: Number(rec.hits), stops: Number(rec.stops), expired: Number(rec.expired), expiredLosses: Number(rec.expiredLosses) }));
 
 // ---------- 5. claim ----------
 for (const [label, who] of [["follower", follower], ["caller", caller]] as const) {
