@@ -71,8 +71,12 @@ Disk: C: was full on 2026-11-11 (0 bytes). With owner approval, deleted broken `
 | --- | --- | --- | --- |
 | CallBook v1 | Sonnet | `contracts/` | Done, 19 tests pass (re-run by director). Not deployed |
 | CallBook v2 (Reactivity take ledger, one open call per market) | Sonnet | `contracts/` | Running |
-| Web shell + design | Sonnet | `web/` | First run blocked by full disk; resumed. Fonts Bricolage Grotesque + JetBrains Mono; paper #F4F1EA, ink #141414, signal #FF4D1C |
+| Web shell + design | Sonnet | `web/` | Done, commit 346c0fb. Reviewed by director in browser: composer, /c/1 with live ladder and on-chain take counters, OG image, /u page. No wagmi (own injected-wallet provider `lib/wallet.tsx`). Known bug: Ladder hydration mismatch (fix in pass 2) |
+| Pass 2: take flow, close, earnings/withdraw, take-e2e script | Sonnet | `web/` | Running |
+| Feedback-track reports | Haiku | `feedback/` | Running (duplicate check first) |
 
 ## Log
 
 - 2026-11-11: idea locked (Callcard, renamed Callout by owner). Verified on chain: perp pools allow 10 bps builder fee (`getMaxBuilderFeeBpsTimes1k` = 10000), taker fee 0, indexer `BuilderFeeRecord` / `BuilderApproval` empty. Repo created at Desktop/callout. Spike started to prove a tagged fill.
+
+- 2026-11-11: web shell accepted. Disk dipped again because of our own npm and .next caches; cleared. Vercel CLI logged in as techkeyy (deploy pending). Dev preview: launch.json lives in the scratch workspace dir (preview tool cwd), port 3111/3112.
