@@ -1,0 +1,14 @@
+import fs from "fs";
+import { SomniaMarkets, SOMNIA_HIDEKI_TESTNET_ADDRESSES } from "@somnia-chain/markets-sdk";
+import { defineChain } from "viem"; import { privateKeyToAccount } from "viem/accounts";
+const env = Object.fromEntries(fs.readFileSync(".env","utf8").trim().split(/\r?\n/).map(l=>l.split("=")));
+const chain = defineChain({ id: 50383, name: "H", nativeCurrency:{name:"STT",symbol:"STT",decimals:18}, rpcUrls:{default:{http:["https://api.hideki2.infra.testnet.somnia.network"],webSocket:["wss://api.hideki2.infra.testnet.somnia.network/ws"]}}});
+const fx = new SomniaMarkets({ chain, indexerUrl:"https://hideki-dev.smk.somnia.host/v1/graphql", wsRpcUrl:"wss://api.hideki2.infra.testnet.somnia.network/ws", addresses: SOMNIA_HIDEKI_TESTNET_ADDRESSES });
+const m = Object.values(await fx.loadMarkets(true)).find(m=>m.type==="swap"&&m.symbol.startsWith("BTC/"));
+const who = privateKeyToAccount(env.FOLLOWER_KEY).address;
+const j = (o)=>JSON.stringify(o,(k,v)=>typeof v==="bigint"?v.toString():v);
+console.log("marginBank", m.info.marginBank, "quote", m.info.quoteToken);
+console.log("acct", j(await fx.client.getMarginAccount(m.info.marginBank, who)));
+console.log("sys", j(await fx.client.getPerpSystemConfig(m.info.marginBank)).slice(0,600));
+console.log("lev", j(await fx.client.getPerpLeverage?.({pool:m.info.poolAddress, marginBank:m.info.marginBank, account:who}).catch(e=>e.message)));
+process.exit(0);

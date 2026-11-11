@@ -1,0 +1,11 @@
+import fs from "fs";
+import { createWalletClient, createPublicClient, http, parseEther, parseUnits, parseAbi, defineChain } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+const env = Object.fromEntries(fs.readFileSync(".env","utf8").trim().split(/\r?\n/).map(l=>l.split("=")));
+const chain = defineChain({ id: 50383, name: "Hideki", nativeCurrency:{name:"STT",symbol:"STT",decimals:18}, rpcUrls:{default:{http:["https://api.hideki2.infra.testnet.somnia.network"]}}});
+const caller = privateKeyToAccount(env.CALLER_KEY), follower = privateKeyToAccount(env.FOLLOWER_KEY).address;
+const wc = createWalletClient({ account: caller, chain, transport: http() }); const pc = createPublicClient({ chain, transport: http() });
+const USDSO = "0xed7993A74dAe1e6656B704A424DcD8711aAf4F72";
+let h = await wc.sendTransaction({ to: follower, value: parseEther("10") }); await pc.waitForTransactionReceipt({hash:h}); console.log("10 STT", h);
+h = await wc.writeContract({ address: USDSO, abi: parseAbi(["function transfer(address,uint256) returns (bool)"]), functionName: "transfer", args: [follower, parseUnits("50", 18)] });
+const r = await pc.waitForTransactionReceipt({hash:h}); console.log("50 USDso", h, r.status);
