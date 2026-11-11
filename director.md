@@ -6,7 +6,7 @@ Hand-off file. Any director picking this up reads this first. Keep it current.
 
 - **Hackathon:** dreamDEX Perps Builder Bounty (DoraHacks), MVP track, 3 x $500.
 - **Deadline:** 2026-11-15 15:30 UTC+1 = **14:30 UTC**.
-- **Gates:** public GitHub repo; places real perps orders on Somnia Tokyo testnet (Hideki, chain 50383); README says what, who, how to run; README has 2 or 3 X posts tagging @DreamDEXSomnia. Submitting needs a whitelisted email (owner's job: dreamDEX Discord ticket).
+- **Gates:** public GitHub repo; places real perps orders on Somnia Tokyo testnet (Hideki, chain 50383); README says what, who, how to run; README has 2 or 3 X posts tagging @DreamDEXSomnia. Submitting needs a whitelisted email: owner confirmed WHITELISTED on 2026-11-11.
 - **Rubric (unweighted):** MVP potential (user value, credible scope, viral or repeat loop, execution); evidence of building (live testnet orders, tx hashes, repo, demo); communication (X posts). Somnia primitives (Reactivity, Agents) are a plus.
 - **Owner rules:** Claude directs, Sonnet and Haiku sub-agents build. Never add Claude as a co-author on GitHub (overrides the default commit trailer). Commit at checkpoints without asking, after a secret scan. Skills live in `C:\Users\HomePC\Desktop\skill` (master director skill, design-skill, build-process, perfect-readme, audit-skill, demo-video, project-edge).
 - **Research:** `C:\Users\HomePC\Desktop\skill\idea-research\dreamdex-perps-idea-research.md`.
@@ -64,6 +64,21 @@ Disk: C: was full on 2026-11-11 (0 bytes). With owner approval, deleted broken `
 - **CallBook v2:** `0x073C82774C9067347d236cA0bA78dD822C1791B7` (deploy tx `0xacb2b5ce…4530`, 21M gas). Funded 33 STT; `watch()` tx `0x99d52128…8787`; Reactivity subscription id 38487587 on MarginBank `BuilderFeeCharged`.
 - **Reactivity proven on chain:** call #1 posted by caller (`0xcb149fd2…57d2`, 2.36M gas); follower took it with builder tag (`0x13ef1b70…e69e`, block 47023302); validator-run handler tx `0x7a680f04…f15c` in the SAME block; `getTakes(1)` = fills 1, takers 1, fees 0.009582339 USDso.
 - Gas on Somnia: forge's local estimate is far too low for deploys (1.8M estimated vs 21M used). Use the RPC's `eth_estimateGas` (it was right for `post`: 3.54M estimate, 2.36M used) and pad 1.5-2x.
+
+## Production
+
+- **Live:** https://callout-perps.vercel.app (Vercel project `techkeyys-projects/callout`, root `web/`, linked in `web/.vercel`). Also https://callout-wine.vercel.app. Env: `NEXT_PUBLIC_CALLBOOK_ADDRESS` set at build and runtime. Owner approved production deploys and redeploys (2026-11-11).
+- Redeploy: `cd web && vercel deploy --prod --yes --build-env NEXT_PUBLIC_CALLBOOK_ADDRESS=0x073C82774C9067347d236cA0bA78dD822C1791B7 --env NEXT_PUBLIC_CALLBOOK_ADDRESS=0x073C82774C9067347d236cA0bA78dD822C1791B7`
+
+## UI test harness (test-only, not shipped)
+
+`spike/signer.mjs` is a local stand-in wallet (POST JSON-RPC; signs with CALLER/FOLLOWER/TESTER key from `spike/.env`). Start with preview_start `signer-tester` (:8546) or `signer-caller` (:8547), then in the browser pane inject `window.ethereum = { request: a => fetch("http://localhost:8546", ...) }` on a localhost:3111 page. Tester wallet `0x8284489d1B7E995544D945E732E0801df9680d58` is the fresh-user test account.
+
+UI test log, 2026-11-11, tester on /c/1 (local dev):
+- connect OK; 0 STT shows the gas notice with faucet, copy and check-again (PASS)
+- after 1 STT arrived, it auto-advanced (PASS)
+- **BUG:** "Add margin" auto-passed with 0 margin because qty was clamped to maxQuantity = 0. Sent to the builder.
+- Approve caller via UI tx `0xcf8aa2aa…c366` (PASS)
 
 ## Builders
 
