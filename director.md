@@ -88,6 +88,10 @@ UI test log, 2026-11-11, tester on /c/1 (local dev):
 - **FOLLOWER JOURNEY PASS in UI (fresh tester, localhost:3111):** deposit 2.22 (approve `0xe3bdd5a7…02fe`, deposit `0xf13fba06…9f2e`), liquidation preview 68,505 < stop 69,920, take + operator approval `0x48bbb6c2…64fd` + bracket `0xaef14392…5121`, "You're in" position block, close `0x47957ed3…7d57` + cancel `0x314a3a1a…f7f5`, STT refunded; getTakes(1) = 3 fills / 2 takers / 0.0589 (close not counted).
 - Caller: composer posted ETH short via UI `0xf278020f…4537` (PASS). /u page showed "contract not connected" because an RPC failure was masked as "unconfigured" (fix sent).
 - **Stale mark:** SDK `loadMarkets().info.markPrice` is a stale indexer snapshot (73,653 for over 1h while fills were ~73,900); the live value is `client.getPerpState(pool).markPrice`. Fixed in c1c7dc7 (not yet verified live). Feedback candidate.
+- **CALLER JOURNEY PASS in UI:** post ETH short `0xf278020f...4537`; /u shows earned 0.0589 (ledger) + withdrawable; withdraw `0xaed150ab...9c84` leaves the balance at 0.
+- Live mark verified (73,744 to 73,739). RPC recovered by ~07:00 UTC.
+- **Outside usage:** wallet `0xCc67779F8eDb2C80DC665775C5597657C512FE1A` posted call #2 (BTC long, "Based off my many Analysis") on production. Ask the owner if it's theirs.
+- Prod redeployed with cff480b (callout-wtdqn7m19). **PERF BUG:** /c/[id] ~33s server time on prod (sent to builder).
 - **Somnia Tokyo RPC degraded 2026-11-11 ~06:20 UTC:** eth_call hangs over 25s or returns "node not ready"; blockNumber is OK. Status page shows elevated latency, with no incident posted.
 - Production redeployed 2026-11-11 with the margin and EIP-6963 fixes (callout-4uejd708w). A public HTTPS page can't call the localhost test signer, so UI tests run on localhost:3111.
 
