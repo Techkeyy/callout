@@ -1,5 +1,5 @@
 name: keeper
-# Records outcomes on CallBook v3: any open call whose stop or target was crossed, or that expired, gets resolve()d.
+# Records outcomes on CallBook v4: any open call whose stop or target was crossed, or that expired, gets resolve()d.
 # resolve() is permissionless; this wallet only pays gas and holds no user funds.
 on:
   schedule:
@@ -26,4 +26,4 @@ jobs:
       - run: node --experimental-strip-types scripts/keeper.ts
         env:
           KEEPER_KEY: ${{ secrets.KEEPER_KEY }}
-          CALLBOOK_ADDRESS: "0x7D9F2b0c5257Ac2fe12f07713971a530B389365c"
+          CALLBOOK_ADDRESS: "0x8a26a9d6fd96db410d5a359e415864e381ba4b6d"
