@@ -10,9 +10,9 @@ Anyone can post a trade call. Nobody pays when they're wrong.
 
 So I built Callout.
 
-Post your perps call on chain and back it with a bond. Followers take it on @DreamDEXSomnia with stop + target armed. You earn on every fill.
+Post your perps call on chain and back it with a bond. Followers take it on @DreamDEXSomnia, and you earn on every fill.
 
-Get stopped out? Your bond pays the people who followed you.
+Stopped out? Your bond pays your followers.
 
 https://callout-perps.vercel.app
 ```
