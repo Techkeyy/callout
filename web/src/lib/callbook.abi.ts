@@ -1,4 +1,4 @@
-// Copied from contracts/out-abi/CallBook.json (CallBook v3). Regenerate when the contract changes.
+// Copied from contracts/out-abi/CallBook.json (CallBook v4). Regenerate when the contract changes.
 export const callBookAbi = [
   {
     "type": "constructor",
@@ -17,6 +17,11 @@ export const callBookAbi = [
         "name": "minBond_",
         "type": "uint128",
         "internalType": "uint128"
+      },
+      {
+        "name": "steward_",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
@@ -24,6 +29,71 @@ export const callBookAbi = [
   {
     "type": "receive",
     "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "BOND_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "FEE_TO_NOTIONAL",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_ENTRY_DRIFT_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_STOP_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_STOP_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -122,6 +192,49 @@ export const callBookAbi = [
   },
   {
     "type": "function",
+    "name": "coveredOf",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "taker",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "expirySubscriptionOf",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "feeOf",
     "inputs": [
       {
@@ -206,6 +319,11 @@ export const callBookAbi = [
             "internalType": "uint128"
           },
           {
+            "name": "capacity",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
             "name": "note",
             "type": "string",
             "internalType": "string"
@@ -243,6 +361,11 @@ export const callBookAbi = [
           },
           {
             "name": "expired",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "expiredLosses",
             "type": "uint32",
             "internalType": "uint32"
           }
@@ -288,6 +411,11 @@ export const callBookAbi = [
             "internalType": "uint128"
           },
           {
+            "name": "forfeit",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
             "name": "claimedTotal",
             "type": "uint128",
             "internalType": "uint128"
@@ -325,6 +453,11 @@ export const callBookAbi = [
           },
           {
             "name": "fees",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "covered",
             "type": "uint128",
             "internalType": "uint128"
           }
@@ -470,6 +603,11 @@ export const callBookAbi = [
         "internalType": "string"
       },
       {
+        "name": "capacity",
+        "type": "uint128",
+        "internalType": "uint128"
+      },
+      {
         "name": "bond",
         "type": "uint128",
         "internalType": "uint128"
@@ -496,6 +634,19 @@ export const callBookAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "steward",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -535,6 +686,24 @@ export const callBookAbi = [
     "inputs": [],
     "outputs": [],
     "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "withdrawReserve",
+    "inputs": [
+      {
+        "name": "to",
+        "type": "address",
+        "internalType": "address payable"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "event",
@@ -624,6 +793,37 @@ export const callBookAbi = [
   },
   {
     "type": "event",
+    "name": "CallTerms",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "capacity",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      },
+      {
+        "name": "bond",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      },
+      {
+        "name": "expirySubscription",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "Claimed",
     "inputs": [
       {
@@ -634,6 +834,25 @@ export const callBookAbi = [
       },
       {
         "name": "who",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ReserveWithdrawn",
+    "inputs": [
+      {
+        "name": "to",
         "type": "address",
         "indexed": true,
         "internalType": "address"
@@ -665,6 +884,31 @@ export const callBookAbi = [
       },
       {
         "name": "price",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TakeOverCapacity",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "taker",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "uncoveredNotional",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -739,6 +983,11 @@ export const callBookAbi = [
   },
   {
     "type": "error",
+    "name": "EntryOffMarket",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NeedsBalance",
     "inputs": []
   },
@@ -764,6 +1013,11 @@ export const callBookAbi = [
   },
   {
     "type": "error",
+    "name": "NotSteward",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NoteTooLong",
     "inputs": []
   },
@@ -779,12 +1033,42 @@ export const callBookAbi = [
   },
   {
     "type": "error",
+    "name": "PoolNotRegistered",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "Reentrancy",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "RewardBelowRisk",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "StalePrice",
     "inputs": []
   },
   {
     "type": "error",
+    "name": "StopTooTight",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "StopTooWide",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "TransferFailed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroCapacity",
     "inputs": []
   },
   {

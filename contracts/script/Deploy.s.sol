@@ -10,7 +10,7 @@ contract Deploy is Script {
 
     function run() external returns (CallBook book) {
         vm.startBroadcast();
-        book = new CallBook(MARGIN_BANK, USDSO, 5e18);
+        book = new CallBook(MARGIN_BANK, USDSO, 5e18, msg.sender); // steward: may only move the STT reserve
         vm.stopBroadcast();
         console.log("CallBook deployed at:", address(book));
     }
