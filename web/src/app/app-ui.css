@@ -429,3 +429,10 @@
     transition: none;
   }
 }
+
+/* When Post is blocked, the reasons get focus: make that visible. */
+.problems:focus {
+  outline: 3px solid var(--signal);
+  outline-offset: 4px;
+  border-radius: var(--r-sm);
+}

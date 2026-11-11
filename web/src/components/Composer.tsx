@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { decodeEventLog } from "viem";
 import { useWallet } from "@/lib/wallet";
@@ -51,6 +51,7 @@ export default function Composer() {
   const [entryS, setEntryS] = useState("");
   const [stopS, setStopS] = useState("");
   const [targetS, setTargetS] = useState("");
+  const problemsRef = useRef<HTMLUListElement>(null);
   const [expiry, setExpiry] = useState(86400);
   const [note, setNote] = useState("");
   const [touched, setTouched] = useState(false);
@@ -151,13 +152,21 @@ export default function Composer() {
   }
 
   const valid = v.ok && !!market && bond !== null && problems.length === 0;
+  const lowUsdso = !!w.address && usdso !== null && bond !== null && usdso.balance < bond;
   // Rule problems show as soon as the three levels are in, so nobody finds out at the wallet.
   const showProblems = touched || (entry !== null && stop !== null && target !== null);
 
   async function post() {
     setTouched(true);
     setErr(null);
-    if (!valid || !market || entry === null || stop === null || target === null || capacity === null) return;
+    if (!valid || !market || entry === null || stop === null || target === null || capacity === null) {
+      // Never fail silently: take the user to the reason the post is blocked.
+      requestAnimationFrame(() => {
+        problemsRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        problemsRef.current?.focus();
+      });
+      return;
+    }
     if (!contract) {
       setErr("Posting is not switched on yet. The CallBook contract address is not set.");
       return;
@@ -471,7 +480,7 @@ export default function Composer() {
           </div>
 
           {showProblems && problems.length > 0 && (
-            <ul className="problems" role="alert">
+            <ul className="problems" role="alert" ref={problemsRef} tabIndex={-1}>
               {problems.map((p) => (
                 <li key={p}>{p}</li>
               ))}
@@ -497,6 +506,15 @@ export default function Composer() {
             <button type="button" className="btn btn-primary btn-wide" onClick={w.switchChain}>
               Switch to Somnia Tokyo
             </button>
+          ) : lowUsdso ? (
+            <>
+              <a className="btn btn-primary btn-wide" href={DREAMDEX_APP_URL} target="_blank" rel="noopener noreferrer">
+                Get test USDso to post
+              </a>
+              <p className="hint" style={{ textAlign: "center" }}>
+                Your bond is {formatDisplay(bond ?? 0n, 2)} USDso and this wallet has {formatDisplay(usdso?.balance ?? 0n, 2)}. Claim practice USDso in the dreamDEX testnet app, then come back. Your call stays filled in.
+              </p>
+            </>
           ) : (
             <button type="submit" className="btn btn-primary btn-wide" disabled={busy !== null}>
               {cta}
