@@ -12,7 +12,7 @@ v3 made callers post a bond. An outside review found that the bond only punished
 | No reentrancy guard on `claim`. | outside review | `nonReentrant` on every state-changing entry point. Transfers were already checked for success. |
 | The entry was never checked against the market, so a caller could post a target the price had already passed and record an instant HIT. | our stress test | At post, the mark must sit strictly between the stop and the target, and the entry must be within 0.5% of the mark. |
 | `pool` could be any address, including a fake contract that reports any price, so hits could be farmed off-market. | our stress test | The pool must be registered on dreamDEX's MarginBank (`isPerpPoolRegistered`). |
-| A late resolve after expiry read the price whenever someone got around to it. | our stress test | Every call asks Somnia Reactivity for a callback at its own expiry. On testnet that callback was not observed to fire, so a keeper resolves expired calls within about 2 minutes, `claim` settles first, and anyone can resolve. |
+| A late resolve after expiry read the price whenever someone got around to it. | our stress test | Every call asks Somnia Reactivity for a callback at its own expiry. On testnet that callback was not observed to fire, so a keeper resolves expired calls within about 30 seconds, `claim` settles first, and anyone can resolve. |
 
 ## Rules at post
 
@@ -42,7 +42,7 @@ v3 made callers post a bond. An outside review found that the bond only punished
 | EXPIRED, price on the winning side of entry | whole bond back | nothing from the bond | expired, not a miss |
 | EXPIRED, price on the losing side of entry | `bond - forfeit` | `forfeit`, by covered share | expired loss (a miss) |
 | Any outcome, nobody took the call | whole bond back | nothing | as above |
-| Never resolved | the keeper resolves it within about 2 minutes; anyone can resolve, and `claim` resolves first | same | same |
+| Never resolved | the keeper resolves it within about 30 seconds; anyone can resolve, and `claim` resolves first | same | same |
 | Over-capacity fill | earns the dreamDEX fee (paid at fill; no contract can stop that) | not covered by the bond; the app blocks it | not counted |
 
 Hit rate is `hits / (hits + stops + expired losses)`, so the money and the leaderboard judge every outcome the same way.
@@ -54,7 +54,7 @@ Hit rate is `hits / (hits + stops + expired losses)`, so the money and the leade
 | Wide stop, far target, wait for expiry | The 10% stop cap, plus settlement at expiry |
 | Post a target the price has already passed | The mark must sit between the levels at post |
 | Point the call at a fake market | The MarginBank registry check |
-| Resolve late, at a moment that suits you | The keeper settles expired calls within about 2 minutes; the window is small and disclosed |
+| Resolve late, at a moment that suits you | The keeper settles expired calls within about 30 seconds; the window is small and disclosed |
 | Post a long and a short at once | One open call per caller per market |
 | Tiny capacity, then attract big followers | Over-capacity takes are not covered and the app blocks them; the fee on fills placed outside the app is a disclosed limit |
 | One-tick levels as a coin flip | The minimum 0.1% stop and reward-to-risk of at least 1 |
@@ -62,7 +62,7 @@ Hit rate is `hits / (hits + stops + expired losses)`, so the money and the leade
 
 ## Known limits, stated plainly
 
-- **A touch between checks is missed before expiry.** If the price crosses a level and comes back before anyone resolves, the record never sees it. The keeper runs every 2 minutes, and anyone can press "Record on chain".
+- **A touch between checks is missed before expiry.** If the price crosses a level and comes back before anyone resolves, the record never sees it. The keeper runs every 30 seconds, and anyone can press "Record on chain".
 - **dreamDEX pays the builder fee at fill time.** No contract can withhold it, so the bond is how the net result is made conditional.
 - **Testnet.** Paper USDso, no real audience yet.
 - **The steward key.** One immutable address can withdraw the contract's native STT reserve (the 32 STT Somnia requires for subscriptions), so an upgrade does not strand it. It cannot touch bonds, calls or outcomes.

@@ -1,5 +1,7 @@
 # Callout
 
+[![ci](https://github.com/Techkeyy/callout/actions/workflows/ci.yml/badge.svg)](https://github.com/Techkeyy/callout/actions/workflows/ci.yml)
+
 **Post a perps call. Put a bond behind it. Get paid when people take it. Be wrong and your takers get paid.**
 
 **[Live app](https://callout-perps.vercel.app)** · **[Open calls](https://callout-perps.vercel.app/app?tab=explore)** · **[Leaderboard](https://callout-perps.vercel.app/board)** · **[CallBook v4.1 contract](https://explorer.testnet.somnia.network/tokyo/address/0xc83b954b22003dbe498c47b2330699466c79661d)** · [Mechanism spec](docs/v4-mechanism.md) · [Security pass](docs/v4-audit.md) · [Feedback reports](feedback/)
@@ -67,7 +69,7 @@ It took three rounds to get there, and the history is the point:
    - past the target is HIT;
    - after expiry, anything else is EXPIRED and settled at the price.
 
-   A keeper runs every 2 minutes on our server from its own gas-only wallet, and anyone can press "Record on chain". `claim` also settles a call first if nobody has.
+   A keeper runs every 30 seconds on our server from its own gas-only wallet, and anyone can press "Record on chain". `claim` also settles a call first if nobody has.
 8. **Settles the bond.** HIT returns it to the caller. STOPPED splits it among the takers by covered size. EXPIRED gives the takers `bond × (how far the price moved against the call ÷ the stop distance)` and the caller the rest. With no covered takers, the caller gets the bond back.
 9. **Records** the outcome. Hit rate is `hits / (hits + stops + expired losses)`, shown on every card, every profile and the [leaderboard](https://callout-perps.vercel.app/board).
 10. **Pays** the caller the builder fee into their MarginBank balance, withdrawn from their page. Followers see every call they took, with what they can claim, on their own page.
@@ -138,7 +140,7 @@ Each row is a forge test, and most are also checked on chain.
 | Margin would liquidate before the stop | Margin is sized past the stop distance, the liquidation price is shown, and the take is blocked if the stop wouldn't fire first |
 | Caller tries to change a posted call | No edit function exists, and a test checks terms stay identical |
 
-Tests: `forge test` runs 60, `vitest` runs 121. The full payoff table and every dodge are in [docs/v4-mechanism.md](docs/v4-mechanism.md), and the pre-deploy security pass is in [docs/v4-audit.md](docs/v4-audit.md).
+Tests: `forge test` runs 60, `vitest` runs 121, and [CI](https://github.com/Techkeyy/callout/actions/workflows/ci.yml) runs both on every push, so nobody needs Foundry installed to check them. The full payoff table and every dodge are in [docs/v4-mechanism.md](docs/v4-mechanism.md), and the pre-deploy security pass is in [docs/v4-audit.md](docs/v4-audit.md).
 
 ## Quickstart
 
@@ -182,15 +184,16 @@ The full loop on chain (post, take, settle, claim) runs from `web/scripts/take-e
 | `web/src/components/TakePanel.tsx` | The follower flow on a card |
 | `web/src/components/PriceChart.tsx` | Candles from dreamDEX with the call's levels |
 | `web/src/app/c/[id]` | Call card page and its share image |
-| `web/scripts/keeper.ts` | Resolves calls when a level is crossed or a call expires. Runs every 2 minutes on our server |
+| `web/scripts/keeper.ts` | Resolves calls when a level is crossed or a call expires. Runs every 30 seconds on our server, and anyone can run their own copy |
 
 Stack: Next.js 16, viem, `@somnia-chain/markets-sdk` 0.33, lightweight-charts, Solidity 0.8.30 with Foundry, Somnia Reactivity, Vercel.
 
 ## Limits
 
 - Testnet only, paper USDso. No real funds, and no real audience yet.
-- **A brief touch between checks is missed before expiry.** If the price crosses a level and comes back before anyone resolves, it is not recorded. The keeper checks every 2 minutes, and anyone can press "Record on chain".
-- **The expiry callback did not fire on testnet.** Each call asks Somnia Reactivity to call the contract back at its expiry. In controlled tests with the keeper paused, the callback did not land, even after v4.1 matched Somnia's example settings. Settlement does not depend on it: the keeper settles expired calls within about 2 minutes, and `claim` settles first.
+- **A brief touch between checks is missed before expiry.** If the price crosses a level and comes back before anyone resolves, it is not recorded. The keeper checks every 30 seconds, and anyone can press "Record on chain".
+- **The keeper is a convenience, not a trust assumption.** It only decides how fast an outcome is recorded, never what the outcome is: the contract checks the price itself. If our keeper stops, any taker or caller can resolve from the card, `claim` settles first, and anyone can run `web/scripts/keeper.ts` with their own gas wallet.
+- **The expiry callback did not fire on testnet.** Each call asks Somnia Reactivity to call the contract back at its expiry. In controlled tests with the keeper paused, the callback did not land, even after v4.1 matched Somnia's example settings. Settlement does not depend on it: the keeper settles expired calls within about 30 seconds, and `claim` settles first.
 - dreamDEX pays the builder fee at fill time. On fills placed outside the app beyond a call's capacity, the caller still earns the fee without bond cover. The app blocks those takes.
 - One open call per caller per market (see above for why).
 - **One steward key exists.** An immutable address can withdraw the contract's native STT reserve (Somnia requires 32 STT for subscriptions), so an upgrade doesn't strand it. It used that power once, to move the reserve to v4.1. It cannot touch bonds, calls or outcomes.
