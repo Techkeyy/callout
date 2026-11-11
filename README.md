@@ -1,11 +1,13 @@
 # Callout
 
-**Post a perps call. Put a bond behind it. Get paid when people take it, lose it if you get stopped.**
+**Post a perps call. Put a bond behind it. Get paid when people take it. Be wrong and your takers get paid.**
 
-**[Live app](https://callout-perps.vercel.app)** · **[Live call card](https://callout-perps.vercel.app/c/2)** · **[Leaderboard](https://callout-perps.vercel.app/board)** · **[CallBook v3 contract](https://explorer.testnet.somnia.network/tokyo/address/0x7D9F2b0c5257Ac2fe12f07713971a530B389365c)** · [Feedback reports](feedback/)
+**[Live app](https://callout-perps.vercel.app)** · **[Open calls](https://callout-perps.vercel.app/app?tab=explore)** · **[Leaderboard](https://callout-perps.vercel.app/board)** · **[CallBook v4.1 contract](https://explorer.testnet.somnia.network/tokyo/address/0xc83b954b22003dbe498c47b2330699466c79661d)** · [Mechanism spec](docs/v4-mechanism.md) · [Security pass](docs/v4-audit.md) · [Feedback reports](feedback/)
 <!-- Demo video link -->
 
-Callout turns a trade call into a shareable card that a follower can take on dreamDEX perps in a few clicks, with the call's stop and target already armed. It is for traders who post calls on X (callers) and the people who follow them (followers). The caller posts with a USDso bond, earns dreamDEX's builder fee on every follower fill, and the call is written on chain so it can't be edited. If the call hits its stop, the bond goes to the people who took it.
+Callout turns a trade call into a shareable card that a follower can take on dreamDEX perps in a few clicks, with the call's stop and target already armed. It is for traders who post calls on X (callers) and the people who follow them (followers).
+
+The caller posts the call on chain, where it can never be edited, and backs it with a USDso bond sized to how much trade size can follow it. The caller earns dreamDEX's 10 bps builder fee on every follower fill. Every outcome settles against the market's on-chain price: hit the target and the bond comes back; get stopped and it pays the takers; let it expire and it is settled at the price, so if the market moved against the call, the takers get a share.
 
 > *"I called it, you copied it, and I got nothing. Then you said I never called it."*
 
@@ -15,40 +17,61 @@ Built solo by Techkeyy for the dreamDEX Perps Builder Bounty, MVP track. Somnia 
 
 Callers post calls for free and can't prove what they said before the move. Followers copy by hand, late, usually without a stop. Other projects in this bounty copy traders automatically. Callout works per call and is opt-in: you take one call, with its exits, and the caller is paid by the protocol's builder-fee rail, not by you.
 
-The first version (v2) paid callers for reach: more takers meant more fees, whether the call was right or not. An outside review pointed that out, and v3 fixes it. The caller now has skin in the game: "I called it" becomes "I put money behind it".
+dreamDEX pays builder fees at fill time, so no contract can hold them back. The bond makes the net result conditional instead. That is the whole design: **the money and the leaderboard judge every outcome the same way.**
 
-Why a bond and not "fee only if the target hits"? dreamDEX pays builder fees at fill time, so no contract can hold them back. The bond makes the net result conditional instead: a good call gets its bond back plus the fees, a stopped call pays its bond to the followers who took it.
+It took three rounds to get there, and the history is the point:
+
+| Version | What it got wrong | Who found it |
+|---|---|---|
+| v2 | Paid callers for reach. More takers meant more fees, right or wrong. | outside review |
+| v3 | Added a bond, but only a stop cost the caller. An expired call returned the full bond, so the cheapest strategy was a wide stop and a far target: never stopped, never hit, fees kept. The bond was a flat 5 USDso whatever the audience. The contract checked expiry before price. | outside review |
+| v3 | Never checked the entry against the market, so a caller could post a target the price had already passed and record an instant HIT. `pool` could be any address, including a fake contract that reports any price. | our own stress test |
+| **v4 / v4.1 (live)** | Every outcome settles at the price, the stop is capped, the bond scales with capacity, the market must be registered on dreamDEX, and price is checked before time. Spec and payoff table: [docs/v4-mechanism.md](docs/v4-mechanism.md). | |
 
 ```
- CALLER                     FOLLOWER                   SOMNIA
- posts call + bond  -->  opens link, takes it  -->  dreamDEX fills order
- (on chain, no edits)    (stop + target armed)       |
-                                                     v
-                                          builder fee (10 bps) to caller
-                                          Reactivity records the take
-                                                     |
-   anyone calls resolve(id), reads the live mark price
-        |                       |                       |
-      HIT                   EXPIRED                 STOPPED
-  bond back to caller    bond back to caller    bond split among takers
-        |                       |               pro rata by fees paid
-        +-----------+-----------+                     |
-                    v                                 v
-         caller record: hits / stops / expired  (hit rate on card, profile, /board)
+ CALLER                         FOLLOWER                    SOMNIA
+ posts call + bond (2% of   --> opens the card, takes it --> dreamDEX fills the order
+ its follower capacity)         (stop + target armed)         |
+ on chain, no edits                                           v
+                                                    builder fee (10 bps) to caller
+                                                    Reactivity records the take and
+                                                    how much of it the bond covers
+                                                              |
+     resolve(id): reads the live mark price, price before time
+        |                    |                          |
+      HIT                 STOPPED                    EXPIRED
+  bond back to caller   bond to covered takers   settled at the price: the share
+                                                 that moved against the call goes
+                                                 to takers, the rest to the caller
+        |                    |                          |
+        +--------------------+--------------------------+
+                             v
+      caller record: hits / stops / expired losses (hit rate on every card, profile, /board)
 ```
 
 ## What it does
 
-1. **Posts** a call (market, long or short, entry, stop, target, note) with a USDso bond (minimum 5) in one flow. CallBook stores it. There is no edit function and no owner.
-2. **Shares** it as a card at `/c/<id>` with a preview image for X.
-3. **Takes** it for a follower: sets up gas, practice USDso and margin if needed, approves the caller once, fills the order, and arms the call's stop and target.
-4. **Tags** each follower order with `userData = (0xCA11 << 48) | callId` through the raw PerpPool `placeOrder`, so the fill names the caller as builder.
-5. **Counts** the take on chain. CallBook subscribes to dreamDEX MarginBank's `BuilderFeeCharged(payer, builder, perpPool, amount)` event with Somnia Reactivity. A validator runs the handler in the same block as the fill and credits the take to the caller's open call on that market. No server, no database, no indexer.
-6. **Resolves** the call. Anyone can call `resolve(id)`, which reads the perp pool's live `tryGetMarkPrice()`. For a long: mark at or above the target is HIT, mark at or below the stop is STOPPED, and after expiry the call is EXPIRED. A short is the mirror. A keeper (`web/scripts/keeper.ts`) runs every 2 minutes on our server from its own gas-only wallet, and anyone can press "Record on chain" on the card. Every outcome it records is a public transaction from that wallet.
-7. **Settles the bond.** HIT or EXPIRED returns the bond to the caller. STOPPED splits it among the takers pro rata by the builder fees they paid, and each taker claims their share. With zero takers the caller gets the bond back.
-8. **Records** the outcome. Each caller has an on-chain record (hits, stops, expired), and the hit rate shows on every card, every profile and the [leaderboard](https://callout-perps.vercel.app/board).
-9. **Pays** the caller the builder fee, which lands in their MarginBank balance. They withdraw it from their page (`/u/<address>`).
-10. **Closes** early from the card if the follower wants out. Closes carry no builder tag, so they are not counted as takes. A caller closing a call doesn't end its exposure: a closed call can still be resolved until it expires.
+1. **Posts** a call: market, long or short, entry, stop, target, expiry, note, follower capacity and a bond of at least 2% of that capacity (minimum 5 USDso). The contract checks:
+   - the market is registered on dreamDEX's MarginBank;
+   - the live price sits between the stop and the target;
+   - the entry is within 0.5% of the price;
+   - the stop is between 0.1% and 10% from entry;
+   - the target is at least as far as the stop.
+2. **Shares** it. After posting, a "Your call is live" panel offers **Share on X** with a pre-written post, Copy link and Open card. Every card has its own share image: the ticket with its stamp.
+3. **Lists** it in **Explore**, a feed of open calls anyone can take, soonest expiry first.
+4. **Takes** it for a follower: gas, practice USDso and margin if needed, a one-time approval of the caller, then the fill with the call's stop and target armed. The take is capped at what the bond still covers.
+5. **Tags** each follower order with `userData = (0xCA11 << 48) | callId` through the raw PerpPool `placeOrder`, so the fill names the caller as builder.
+6. **Counts** the take on chain. CallBook subscribes to dreamDEX MarginBank's `BuilderFeeCharged(payer, builder, perpPool, amount)` event with Somnia Reactivity. A validator runs the handler in the same block as the fill, credits the take, and records its size (the fee is 10 bps, so size = fee × 1000) up to the call's capacity. No server, no database, no indexer.
+7. **Resolves** the call. Anyone can call `resolve(id)`:
+   - past the stop is STOPPED;
+   - past the target is HIT;
+   - after expiry, anything else is EXPIRED and settled at the price.
+
+   A keeper runs every 2 minutes on our server from its own gas-only wallet, and anyone can press "Record on chain". `claim` also settles a call first if nobody has.
+8. **Settles the bond.** HIT returns it to the caller. STOPPED splits it among the takers by covered size. EXPIRED gives the takers `bond × (how far the price moved against the call ÷ the stop distance)` and the caller the rest. With no covered takers, the caller gets the bond back.
+9. **Records** the outcome. Hit rate is `hits / (hits + stops + expired losses)`, shown on every card, every profile and the [leaderboard](https://callout-perps.vercel.app/board).
+10. **Pays** the caller the builder fee into their MarginBank balance, withdrawn from their page. Followers see every call they took, with what they can claim, on their own page.
+11. **Charts** each market: a price chart on every card and in the composer, with entry, stop and target drawn on the candles.
 
 The take sizes margin so the liquidation price sits beyond the call's stop: margin is at least notional x (stop distance + maintenance margin + 2%). The liquidation price is shown before you confirm.
 
@@ -56,68 +79,66 @@ The take sizes margin so the liquidation price sits beyond the call's stop: marg
 
 All on Somnia Tokyo testnet (chain 50383). Explorer: `https://explorer.testnet.somnia.network/tokyo/tx/<hash>`.
 
-### v3 (live): bond, resolve, settle
+### v4.1 (live)
 
-CallBook v3 `0x7D9F2b0c5257Ac2fe12f07713971a530B389365c`. Deploy tx [`0x0187b308...3d4`](https://explorer.testnet.somnia.network/tokyo/tx/0x0187b3086319bf7257abe10d714d578c3fa895cf2946d58d5e294d972eb393d4). Reactivity watch tx [`0xf65091e4...ad`](https://explorer.testnet.somnia.network/tokyo/tx/0xf65091e4024f80c020cb13032b2ff7d5187f951ad9f90a889d16e113ff2c51ad), subscription 38907707.
-
-| What | Tx |
-|---|---|
-| HIT path, script level (call #1): post with bond | [`0xd3860475...6a4d`](https://explorer.testnet.somnia.network/tokyo/tx/0xd3860475d2e9a176cea3c91916187e5b22c28049b94bbfb779c57d465b876a4d) |
-| HIT path: follower take | [`0xfcf872a3...339b`](https://explorer.testnet.somnia.network/tokyo/tx/0xfcf872a333811a68be34cd9d7e65ca165bada59f365b2832482e97dd4cab339b) |
-| HIT path: resolve, HIT at 73,995.39 | [`0x4ee86f1e...fce6`](https://explorer.testnet.somnia.network/tokyo/tx/0x4ee86f1e149261f8f5f499b439d054c9e037aff034ffb1e826f0241ad903fce6) |
-| HIT path: caller reclaims the bond | [`0xcdd75bd7...3f22`](https://explorer.testnet.somnia.network/tokyo/tx/0xcdd75bd7ae07466b5d1729739ce5a7d7fb7e33119e8bd2f765b10159689a3f22) |
-| STOPPED path, through the web UI with browser wallets (call #2): caller approves the bond | [`0x2b993486...c64e`](https://explorer.testnet.somnia.network/tokyo/tx/0x2b9934862b962e54d9f604cddf1399875130aaf3ff28690a90f51d49e029c64e) |
-| STOPPED path: caller posts | [`0x5427dc63...7956`](https://explorer.testnet.somnia.network/tokyo/tx/0x5427dc63ecf4117f272ce7b9b4dc149f00b29e02271c3398a5a0647824b27956) |
-| STOPPED path: a different wallet presses "Record on chain", STOPPED at 73,629.9 | [`0x972b44fc...e1e3`](https://explorer.testnet.somnia.network/tokyo/tx/0x972b44fc5a6a232853720eb860623076488cfda0ae1343685a65b3a47c7ee1e3) |
-| STOPPED path: the taker claims the whole 5 USDso bond (balance 27.78 to 32.78 USDso) | [`0xd23b71ed...85df`](https://explorer.testnet.somnia.network/tokyo/tx/0xd23b71edd16dfc1ca6480eb053217082e5b763833f304f07c5e6cb9ac1e685df) |
-
-At the time of writing, the caller record on the [leaderboard](https://callout-perps.vercel.app/board) is 1 hit, 1 stopped, a 50% hit rate. It keeps changing, so open the page for the current numbers.
-
-### v2 (history): takes and builder fees
-
-CallBook v2 `0x073C82774C9067347d236cA0bA78dD822C1791B7` is kept as history. These rows are still valid.
+CallBook v4.1 `0xc83b954b22003dbe498c47b2330699466c79661d`.
 
 | What | Tx |
 |---|---|
-| v2 Reactivity subscription created (id 38487587) | [`0x99d52128...8787`](https://explorer.testnet.somnia.network/tokyo/tx/0x99d5212821a55bd2eb348882a9c1afad2556e730d8c29cc1c71d757c0a8b8787) |
-| v2 follower take, builder-tagged fill (block 47023302) | [`0x13ef1b70...e69e`](https://explorer.testnet.somnia.network/tokyo/tx/0x13ef1b70d3187563f7cafdbdd526156d9424a406804ffe003facf8e138f0e69e) |
-| v2 validator-run handler crediting the take, same block | [`0x7a680f04...f15c`](https://explorer.testnet.somnia.network/tokyo/tx/0x7a680f04be617a7f5616792b526a598adb7848db173639aaaa9c9707176ff15c) |
-| Script-level loop: builder-tagged fill, caller paid 0.019193278 USDso (10 bps of about $19.19) | [`0x5cc71549...8fbc`](https://explorer.testnet.somnia.network/tokyo/tx/0x5cc715498e917e9848d903f9704df44050c5b07b5171df8ea00a606f42498fbc) |
-| Caller withdrew that fee | [`0xb27ad347...8a99`](https://explorer.testnet.somnia.network/tokyo/tx/0xb27ad3473fca9328db1e3a0bd2d0b1ba6bf99963366414ffeb8bc22cc1048a99) |
-| Follower via the web UI, fresh wallet: margin deposit | [`0xf13fba06...9f2e`](https://explorer.testnet.somnia.network/tokyo/tx/0xf13fba069906cf3e30e1fbb0548236bb4f13685d67a0fbf2d9445cd6b29c9f2e) |
-| Same follower: take plus stop and target | [`0xaef14392...5121`](https://explorer.testnet.somnia.network/tokyo/tx/0xaef1439227be999b91ec2e5a717995dcf686f799cf7d0690f1e72de213515121) |
-| Same follower: close, then cancel exits | [`0x47957ed3...7d57`](https://explorer.testnet.somnia.network/tokyo/tx/0x47957ed3aad57a1c4b861ddc191daf490a96d75eb16fe20cafe0c620537e7d57), [`0x314a3a1a...f7f5`](https://explorer.testnet.somnia.network/tokyo/tx/0x314a3a1a5e2c8c8ac8935daaba050ac7376c5c8d71b9c5e333ac7b2cb254f7f5) |
-| Caller via the web UI: post a call | [`0xf278020f...4537`](https://explorer.testnet.somnia.network/tokyo/tx/0xf278020fba8352d60ddc246a46f53a000ad4b67ddd5842870fca5f1cfe944537) |
-| Caller via the web UI: withdraw earnings | [`0xaed150ab...9c84`](https://explorer.testnet.somnia.network/tokyo/tx/0xaed150ab6a24d574c68687d6d8e0af30689c5076c0450eea12133d7f07249c84) |
+| Deploy | [`0x9bffaec5...9e95`](https://explorer.testnet.somnia.network/tokyo/tx/0x9bffaec5ad9ba5bc55573b2e3ed0bb61d4c5e7d5015188404a51360d71479e95) |
+| The steward moves v4's 33 STT Reactivity reserve to v4.1 (no new faucet needed) | [`0x88649a98...a813`](https://explorer.testnet.somnia.network/tokyo/tx/0x88649a98154a6da61822959c7ae1adea3e4671f34841f71799d08dee4aaaa813) |
+| Reactivity subscription created (id 39739668) | [`0x9cd91f7c...db1c`](https://explorer.testnet.somnia.network/tokyo/tx/0x9cd91f7cb70288da5a7d86bd61ec450c2c99c547c81facf1f1f4ac5e208bdb1c) |
+| Call #1 posted (expires in 2 minutes) | [`0x2cee3d1e...55c3`](https://explorer.testnet.somnia.network/tokyo/tx/0x2cee3d1e0d72a48a172b23ef53b76677b4ff63bf6d0a70c60b1286e9934855c3) |
+| Call #1 settled EXPIRED by the keeper | [`0xefb37b90...19ec`](https://explorer.testnet.somnia.network/tokyo/tx/0xefb37b903f3664c792c91535c5fb0b3f5cd714044770cc5d3d3e28452d3919ec) |
+| Call #1 claim: the price had drifted against the call, but nobody took it, so the caller reclaims the full 5 USDso. The record still counts it as an expired loss | [`0x0342d27a...4ca0`](https://explorer.testnet.somnia.network/tokyo/tx/0x0342d27ae0d06b39106b0120deb6918ea3c17876beb00cc9d5243a49710d4ca0) |
+| Call #2 posted (BTC, levels 0.15% from the price) | [`0x1979685d...6a57`](https://explorer.testnet.somnia.network/tokyo/tx/0x1979685d2accc578c495fc25fe8bbacbaba32d259c2a627cce0a17debfe76a57) |
+| Call #2 follower take: Reactivity credited 19.370312 USDso covered, exactly fee × 1000 | [`0x476c4364...0d64`](https://explorer.testnet.somnia.network/tokyo/tx/0x476c4364f91b8e0a4e6d93d8db42bf3acc7f4f0d4bfe9f88dda493bdde0e0d64) |
+<!-- V41_OUTCOME_ROWS -->
+
+### v4: the expired-at-a-loss settlement
+
+CallBook v4 `0x8a26a9d6fd96db410d5a359e415864e381ba4b6d` has the same settlement logic. It was replaced by v4.1 only for the expiry-callback change described under Limits.
+
+| What | Tx |
+|---|---|
+| Call #3 posted (ETH, 1% levels, 4-minute expiry) | [`0x26e09829...e65b`](https://explorer.testnet.somnia.network/tokyo/tx/0x26e098297de464781fb4830b574b6f279335527d6a3db7994ac109e28262e65b) |
+| Follower take, 19.955328 USDso covered | [`0x5c61be6d...50fd`](https://explorer.testnet.somnia.network/tokyo/tx/0x5c61be6dee026cc0fb7ba58cc9c3d8e432d2fdf33fc446a23544e5f86fd650fd) |
+| Expired with ETH against the call: settled by the keeper | [`0x0be40b93...0618`](https://explorer.testnet.somnia.network/tokyo/tx/0x0be40b9321fdc9152e5903403299364893fcc1a5799153e742352e8fb55a0618) |
+| Follower claims their share of the forfeit: 0.54 USDso | [`0xbfd06bb1...a4b4`](https://explorer.testnet.somnia.network/tokyo/tx/0xbfd06bb197110bbf3ddd798d4837c1f0fa5fdc0d06c2d0e89bea8505846ba4b4) |
+| Caller claims the rest of the bond: 4.46 USDso. The record shows "1 expired (1 at a loss), 0% hit rate" | [`0xe0e13969...6b625`](https://explorer.testnet.somnia.network/tokyo/tx/0xe0e139697240e53c6de312a50eeaf3b7165655ed976d5ac3207fa0623596b625) |
+| A fake market is rejected at post (`PoolNotRegistered`), checked by simulation | no tx: a revert |
+
+### v3 and v2 (history)
+
+v3 `0x7D9F2b0c...365c` proved HIT and STOPPED settlement, including a STOPPED call settled through the web UI with the taker claiming the whole bond ([`0xd23b71ed...85df`](https://explorer.testnet.somnia.network/tokyo/tx/0xd23b71edd16dfc1ca6480eb053217082e5b763833f304f07c5e6cb9ac1e685df)). v2 `0x073C8277...91B7` proved Reactivity counting a take in the same block as the fill: take [`0x13ef1b70...e69e`](https://explorer.testnet.somnia.network/tokyo/tx/0x13ef1b70d3187563f7cafdbdd526156d9424a406804ffe003facf8e138f0e69e), validator-run handler [`0x7a680f04...f15c`](https://explorer.testnet.somnia.network/tokyo/tx/0x7a680f04be617a7f5616792b526a598adb7848db173639aaaa9c9707176ff15c), block 47023302. It also proved the builder fee reaching the caller: [`0x5cc71549...8fbc`](https://explorer.testnet.somnia.network/tokyo/tx/0x5cc715498e917e9848d903f9704df44050c5b07b5171df8ea00a606f42498fbc), withdrawn in [`0xb27ad347...8a99`](https://explorer.testnet.somnia.network/tokyo/tx/0xb27ad3473fca9328db1e3a0bd2d0b1ba6bf99963366414ffeb8bc22cc1048a99).
 
 ## Why Somnia Reactivity matters here
 
-Counting takes looked easy and wasn't. The dreamDEX indexer can't filter orders by the `userData` tag, and it doesn't index perp builder fees. The RPC limits `eth_getLogs` to about 1000 blocks. Any server-side attribution would have been a fragile scraper. Reactivity let the contract listen to the fee event itself, so the take is recorded in the same block as the fill, by the chain. The bond split depends on it: takers are paid by the fees the chain itself counted.
+Counting takes looked easy and wasn't. The dreamDEX indexer can't filter orders by the `userData` tag, and it doesn't index perp builder fees. The RPC limits `eth_getLogs` to about 1000 blocks. Any server-side attribution would have been a fragile scraper. Reactivity lets the contract listen to the fee event itself, so the take and its size are recorded in the same block as the fill, by the chain. The bond split depends on it: takers are paid by the coverage the chain itself counted.
 
-dreamDEX lists builder codes and fee rebates as roadmap item #2. Perp pools already allow a 10 bps builder fee on chain, and Callout uses it today. Perp builder fees are credited to the builder's MarginBank balance (withdraw with `withdrawMargin`), not the pool vault.
+dreamDEX lists builder codes and fee rebates as roadmap item #2. Perp pools already allow a 10 bps builder fee on chain, and Callout uses it today.
 
 ## How I tried to break it
 
-| Input | Result |
+Each row is a forge test, and most are also checked on chain.
+
+| Attempt | Result |
 |---|---|
-| Caller closes the call early to dodge a stop | Doesn't work. A closed call can still be resolved until it expires |
-| Price is stale when someone resolves | Reverts with `StalePrice`. Nothing is recorded |
-| Price moved back before anyone resolved | Reverts with `NotResolvable`. Nothing changes |
-| Taker claims the bond twice | Reverts |
-| Someone who never took the call tries to claim | Nothing to claim |
-| STOPPED with zero takers | Caller gets the bond back |
-| Price feed is stale when a follower takes | Take is blocked. The app reads dreamDEX's on-chain mark (`getPerpState`), not the indexer snapshot, which sat stale for over an hour |
-| Margin would liquidate before the stop | Margin is sized past the stop distance, the liquidation price is shown, and the take is blocked if the stop wouldn't fire first. An early UI version sized margin at the minimum and was caught in testing |
-| dreamDEX practice-USDso voucher claim reverts for a plain wallet | The app simulates first and routes to a normal deposit instead of sending a failing tx |
-| Tokyo RPC degraded (calls hung, "node not ready") | A failed read is shown as a failed read, not as "contract not configured". That masking bug was found on the profile page and fixed |
-| Follower closes the position | Close has no builder tag, so it is not counted as a take |
-| Someone who isn't the caller tries to close a call | Rejected by the contract |
-| Caller tries to change a posted call | No edit function exists, and a test checks terms stay identical across time and close |
-| Second open call by the same caller on the same market | Rejected: one open call per caller per market |
+| Wide stop, far target, wait for expiry (the farm the review named) | The stop is capped at 10%, and expiry settles at the price, so drifting against the call costs the bond pro rata |
+| Post a target the price has already passed, for an instant HIT | Rejected: the live price must sit between the stop and the target |
+| Point the call at a fake market that reports any price | Rejected: the pool must be registered on dreamDEX's MarginBank |
+| Resolve a stopped call late, after expiry | It is still STOPPED: price is checked before time |
+| A long and a short on the same market at once | Rejected: one open call per caller per market. Takes are matched to calls by (caller, market), so this rule is also what keeps attribution exact |
+| A tiny capacity, then attract big followers | Takes past the capacity are not covered, and the app caps every take at what the bond still covers |
+| One-tick levels as a coin flip | Rejected: the stop must be at least 0.1% from entry, with reward at least equal to risk |
+| A hooked token re-entering `claim` from inside the payout | Rejected: every entry point is `nonReentrant` |
+| Close the call early to dodge a stop | A closed call still settles. Closing only stops new takes |
+| Claim twice, or claim without taking | Reverts / nothing to claim |
+| Stale price when someone resolves | Reverts with `StalePrice`. Nothing is recorded |
+| Margin would liquidate before the stop | Margin is sized past the stop distance, the liquidation price is shown, and the take is blocked if the stop wouldn't fire first |
+| Caller tries to change a posted call | No edit function exists, and a test checks terms stay identical |
 
-**A stale or missing price never settles a call.** The contract decides what counts, and the app blocks unsafe takes before they are sent.
-
-Tests: `forge test` runs 57 passing, `vitest` runs 70 passing (take sizing, liquidation and stop checks, price handling, outcome logic).
+Tests: `forge test` runs 60, `vitest` runs 121. The full payoff table and every dodge are in [docs/v4-mechanism.md](docs/v4-mechanism.md), and the pre-deploy security pass is in [docs/v4-audit.md](docs/v4-audit.md).
 
 ## Quickstart
 
@@ -132,7 +153,7 @@ npm install
 
 cp .env.example .env.local
 # set in .env.local:
-# NEXT_PUBLIC_CALLBOOK_ADDRESS=0x7D9F2b0c5257Ac2fe12f07713971a530B389365c
+# NEXT_PUBLIC_CALLBOOK_ADDRESS=0xc83b954b22003dbe498c47b2330699466c79661d
 # NEXT_PUBLIC_SITE_URL=http://localhost:3000
 
 npm run dev
@@ -145,38 +166,34 @@ cd contracts && forge test
 cd ../web && npx vitest run
 ```
 
-Script-level proof of the money loop lives in `spike/`. It needs a funded testnet key in `spike/.env`, which is never committed.
+The full loop on chain (post, take, settle, claim) runs from `web/scripts/take-e2e.ts`. It needs funded testnet keys in `spike/.env`, which is never committed.
 
 ## Architecture
 
 | Piece | Job |
 |---|---|
-| `contracts/src/CallBook.sol` | Immutable call record, bond, resolve and settle, take ledger, Reactivity handler for `BuilderFeeCharged` |
+| `contracts/src/CallBook.sol` | Immutable calls, level and bond rules, the take ledger with capacity cover, settlement at the price, claims, Reactivity handlers |
+| `web/src/lib/rules.ts` | The contract's post rules, bond sizing, capacity and forfeit math, mirrored for the UI |
+| `web/src/lib/outcome.ts` | HIT, STOPPED or EXPIRED from the mark price, in the contract's order |
 | `web/src/lib/take.ts` | Sizes margin past the stop, computes liquidation, gates unsafe takes |
-| `web/src/lib/outcome.ts` | Decides HIT, STOPPED or EXPIRED from the mark price and the call's levels |
-| `web/src/lib/board.ts` | Builds the leaderboard from callers' on-chain records |
 | `web/src/lib/dex.ts` | dreamDEX perp calls: deposit, approve, tagged `placeOrder`, stop and target, close |
-| `web/src/lib/mark.ts`, `prices.ts` | Live on-chain mark price and stale checks |
-| `web/src/lib/callbook.ts`, `calls.ts` | Reads calls, records and the take ledger from CallBook |
-| `web/src/lib/wallet.tsx` | Injected-wallet provider, no wagmi |
-| `web/src/components/Composer.tsx` | Write and post a call with its bond |
-| `web/src/components/TakePanel.tsx` | Follower flow on a call card |
-| `web/src/components/ResolveClaim.tsx` | "Record on chain" and bond claim |
-| `web/src/components/Earnings.tsx` | Caller earnings and withdraw |
-| `web/src/app/c/[id]` | Call card page and share image |
-| `web/src/app/board` | Leaderboard ranked by hit rate |
-| `web/scripts/keeper.ts` | Resolves calls automatically when the price passes a level; runs every 2 minutes on our server |
+| `web/src/lib/feed.ts`, `board.ts` | The Explore feed and the leaderboard from on-chain records |
+| `web/src/components/Composer.tsx` | Write, check and post a call, then share it |
+| `web/src/components/TakePanel.tsx` | The follower flow on a card |
+| `web/src/components/PriceChart.tsx` | Candles from dreamDEX with the call's levels |
+| `web/src/app/c/[id]` | Call card page and its share image |
+| `web/scripts/keeper.ts` | Resolves calls when a level is crossed or a call expires. Runs every 2 minutes on our server |
 
-Stack: Next.js 16, viem, `@somnia-chain/markets-sdk` 0.33, Solidity 0.8.30 with Foundry, Somnia Reactivity, Vercel.
+Stack: Next.js 16, viem, `@somnia-chain/markets-sdk` 0.33, lightweight-charts, Solidity 0.8.30 with Foundry, Somnia Reactivity, Vercel.
 
 ## Limits
 
-- Testnet only, paper USDso. No real funds.
-- An outcome is recorded only when someone resolves while the price is past the level. A brief touch that nobody catches won't count. The 2-minute keeper narrows that gap but can't close it.
-- dreamDEX's practice-USDso voucher claim reverts for some plain wallets. The app checks first and routes to deposit.
-- Prices come from dreamDEX's on-chain mark. If it is stale, takes are blocked and resolves revert.
-- One open call per caller per market.
-- Each CallBook version holds its own Reactivity subscription, funded with STT held by the contract. It pays handler gas and can't be withdrawn.
+- Testnet only, paper USDso. No real funds, and no real audience yet.
+- **A brief touch between checks is missed before expiry.** If the price crosses a level and comes back before anyone resolves, it is not recorded. The keeper checks every 2 minutes, and anyone can press "Record on chain".
+- **The expiry callback did not fire on testnet.** Each call asks Somnia Reactivity to call the contract back at its expiry. In controlled tests with the keeper paused, the callback did not land, even after v4.1 matched Somnia's example settings. Settlement does not depend on it: the keeper settles expired calls within about 2 minutes, and `claim` settles first.
+- dreamDEX pays the builder fee at fill time. On fills placed outside the app beyond a call's capacity, the caller still earns the fee without bond cover. The app blocks those takes.
+- One open call per caller per market (see above for why).
+- **One steward key exists.** An immutable address can withdraw the contract's native STT reserve (Somnia requires 32 STT for subscriptions), so an upgrade doesn't strand it. It used that power once, to move the reserve to v4.1. It cannot touch bonds, calls or outcomes.
 
 ## X posts
 
@@ -186,10 +203,12 @@ Stack: Next.js 16, viem, `@somnia-chain/markets-sdk` 0.33, Solidity 0.8.30 with 
 
 ## dreamDEX feedback
 
-I hit two reproducible problems while building, written up with steps, expected and actual results in [feedback/](feedback/):
+Four reproducible problems, written up with steps, expected and actual results in [feedback/](feedback/):
 
 1. [Indexer: `userData` `_eq` filter returns "database query error"](feedback/01-indexer-userdata-filter.md) unless the query is also scoped to an owner.
 2. [SDK: `trader.placeOrder` on a perp pool fails in preflight with `marketExpiryNs reverted`](feedback/02-sdk-placeorder-on-perp-pool-marketexpiryns.md). Callout uses the raw PerpPool `placeOrder` instead.
+3. [Perp voucher: `claim()` reverts with an unknown error while eligibility says eligible](feedback/03-voucher-claim-reverts-while-eligible.md).
+4. [SDK: `loadMarkets().info.markPrice` is a stale indexer snapshot, not the live mark](feedback/04-loadmarkets-stale-markprice.md).
 
 ## License
 
