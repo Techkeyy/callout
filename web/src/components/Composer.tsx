@@ -50,7 +50,18 @@ export default function Composer() {
   const [stopS, setStopS] = useState("");
   const [targetS, setTargetS] = useState("");
   const problemsRef = useRef<HTMLUListElement>(null);
-  const [expiry, setExpiry] = useState(86400);
+  const [presetExpiry, setPresetExpiry] = useState(86400);
+  // Custom duration: any length from 5 minutes to the contract's 30-day maximum.
+  const [customOn, setCustomOn] = useState(false);
+  const [customVal, setCustomVal] = useState("12");
+  const [customUnit, setCustomUnit] = useState<"minutes" | "hours" | "days">("hours");
+  const UNIT_SECS = { minutes: 60, hours: 3600, days: 86400 } as const;
+  const customSecs = Math.round((Number(customVal) || 0) * UNIT_SECS[customUnit]);
+  const expiry = customOn ? customSecs : presetExpiry;
+  const setExpiry = (secs: number) => {
+    setCustomOn(false);
+    setPresetExpiry(secs);
+  };
   const [note, setNote] = useState("");
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState<null | "approve" | "wallet" | "chain">(null);
@@ -125,6 +136,8 @@ export default function Composer() {
   const problems = [...v.problems];
   if (offTick) problems.push(`Prices must move in steps of ${formatPrice(tick)}. Use "Snap to market steps".`);
   if (bond === null) problems.push("Enter a bond amount.");
+  if (customOn && customSecs > 0 && customSecs < 300) problems.push("A call needs to stay open for at least 5 minutes, so followers have time to take it.");
+  if (customOn && !(customSecs > 0)) problems.push("Enter how long the call stays open.");
   problems.push(...validatePostRules({ isLong, entry, stop, target, mark, capacity, bond, minBond, expirySecs: expiry }));
   if (bond !== null && usdso && usdso.balance < bond) {
     problems.push(`You need ${formatDisplay(bond, 2)} USDso for this bond and have ${formatDisplay(usdso.balance, 2)}. Get test USDso in the dreamDEX testnet app, then try again.`);
@@ -403,11 +416,31 @@ export default function Composer() {
             </span>
             <div className="chips" role="group" aria-labelledby="exp-l">
               {EXPIRIES.map((x) => (
-                <button type="button" key={x.secs} className="chip" aria-pressed={expiry === x.secs} onClick={() => setExpiry(x.secs)}>
+                <button type="button" key={x.secs} className="chip" aria-pressed={!customOn && presetExpiry === x.secs} onClick={() => setExpiry(x.secs)}>
                   {x.label}
                 </button>
               ))}
+              <button type="button" className="chip" aria-pressed={customOn} onClick={() => setCustomOn(true)}>
+                Custom
+              </button>
             </div>
+            {customOn && (
+              <div className="custom-expiry">
+                <input
+                  className="input num"
+                  inputMode="decimal"
+                  aria-label="Custom duration"
+                  value={customVal}
+                  onChange={(e) => setCustomVal(e.target.value.replace(/[^\d.]/g, ""))}
+                />
+                <select className="select" aria-label="Unit" value={customUnit} onChange={(e) => setCustomUnit(e.target.value as "minutes" | "hours" | "days")}>
+                  <option value="minutes">minutes</option>
+                  <option value="hours">hours</option>
+                  <option value="days">days</option>
+                </select>
+                <span className="hint">From 5 minutes to 30 days.</span>
+              </div>
+            )}
           </div>
 
           <div className="field">

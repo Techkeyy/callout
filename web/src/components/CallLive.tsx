@@ -188,7 +188,8 @@ export default function CallLive(p: Props) {
       setSheet("taker");
     }
   }, [justTook, takerModel]);
-  const shareMode: "took" | "mine" | "taker" | "call" = justTook && takerModel ? "took" : resolved && isMine ? "mine" : resolved && takerModel ? "taker" : "call";
+  // A wallet that took this call can always share its take, open or resolved, on every visit.
+  const shareMode: "took" | "mine" | "taker" | "call" = justTook && takerModel ? "took" : resolved && isMine ? "mine" : takerModel ? "taker" : "call";
   const shareHead = shareMode === "took" ? "You took this call. Share it?" : shareMode === "mine" ? "Share your result" : shareMode === "taker" ? "Share your take" : resolved ? "Share this result" : "Share this call";
   const shareBody =
     shareMode === "took"
@@ -202,7 +203,9 @@ export default function CallLive(p: Props) {
         : shareMode === "taker"
           ? myPayout
             ? `The caller's bond paid you ${formatDisplay(myPayout, 2)} USDso. Share it?`
-            : "See how the call went and share it."
+            : resolved
+              ? "See how the call went and share it."
+              : "You're in this call. Your card shows the move so far."
           : "Post the card anywhere. The link has its own preview.";
   const hasClaim = resolved && claimable !== null && claimable > 0n;
   const next = !w.address ? (

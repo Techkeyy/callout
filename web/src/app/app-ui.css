@@ -894,3 +894,19 @@
   color: var(--short);
   border-top: 1px solid var(--line);
 }
+
+/* ---------- composer: custom call duration ---------- */
+.custom-expiry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.custom-expiry .input {
+  width: 110px;
+}
+.custom-expiry .select {
+  width: auto;
+  min-width: 120px;
+}
