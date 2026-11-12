@@ -4,6 +4,10 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useWallet } from "@/lib/wallet";
 import { shortAddress } from "@/lib/time";
+import { readBalances, type Balances } from "@/lib/balances";
+import { formatDisplay } from "@/lib/prices";
+
+const fmt = (v: bigint | null) => (v === null ? "unavailable" : formatDisplay(v, 2));
 
 export default function Header() {
   const w = useWallet();
@@ -13,6 +17,22 @@ export default function Header() {
   const onExplore = pathname === "/app" && params.get("tab") === "explore";
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const [bal, setBal] = useState<Balances | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const loadBalances = () => {
+    if (!w.address) return;
+    setLoading(true);
+    readBalances(w.address)
+      .then(setBal)
+      .finally(() => setLoading(false));
+  };
+  // Fresh balances every time the wallet menu opens.
+  useEffect(() => {
+    if (open && w.address) loadBalances();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, w.address]);
+  useEffect(() => setBal(null), [w.address]);
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
@@ -98,8 +118,50 @@ export default function Header() {
                     Switch to Somnia Tokyo
                   </button>
                 )}
+                <div className="wallet-head">
+                  <span className="num">{shortAddress(w.address)}</span>
+                  <button
+                    type="button"
+                    className="linklike"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(w.address!).then(() => {
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 1500);
+                      });
+                    }}
+                  >
+                    {copied ? "Copied" : "Copy address"}
+                  </button>
+                </div>
+                <dl className="wallet-bal" aria-live="polite">
+                  <div>
+                    <dt>USDso in wallet</dt>
+                    <dd className="num">{loading && !bal ? "..." : fmt(bal?.usdso ?? null)}</dd>
+                  </div>
+                  <div>
+                    <dt>Margin on dreamDEX</dt>
+                    <dd className="num">{loading && !bal ? "..." : fmt(bal?.margin ?? null)}</dd>
+                  </div>
+                  <div>
+                    <dt>STT for gas</dt>
+                    <dd className="num">{loading && !bal ? "..." : fmt(bal?.stt ?? null)}</dd>
+                  </div>
+                </dl>
+                <p className="wallet-note">Bonds use USDso in your wallet. Takes use your margin on dreamDEX.</p>
+                <button role="menuitem" onClick={loadBalances} disabled={loading}>
+                  {loading ? "Refreshing..." : "Refresh balances"}
+                </button>
                 <Link role="menuitem" href={`/u/${w.address}`} onClick={() => setOpen(false)}>Your profile</Link>
-                <p>Wallet: connected. To disconnect, use your wallet app.</p>
+                <button
+                  role="menuitem"
+                  className="menu-danger"
+                  onClick={() => {
+                    setOpen(false);
+                    w.disconnect();
+                  }}
+                >
+                  Disconnect
+                </button>
               </div>
             )}
           </div>

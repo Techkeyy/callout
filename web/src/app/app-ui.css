@@ -850,3 +850,41 @@
   max-width: 760px;
   margin-inline: auto;
 }
+
+/* ---------- wallet menu: address, balances, disconnect ---------- */
+.menu .wallet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px 6px;
+}
+.menu .wallet-bal {
+  margin: 0;
+  padding: 4px 14px 8px;
+  display: grid;
+  gap: 6px;
+  min-width: 240px;
+}
+.menu .wallet-bal div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.menu .wallet-bal dt {
+  color: var(--ink-2);
+}
+.menu .wallet-bal dd {
+  margin: 0;
+  font-weight: 600;
+}
+.menu .wallet-note {
+  padding: 0 14px 8px;
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--t-14);
+}
+.menu .menu-danger {
+  color: var(--short);
+  border-top: 1px solid var(--line);
+}

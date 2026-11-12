@@ -32,12 +32,32 @@ interface WalletCtx {
   /** Connect the wallet with this id, or the first one found. Re-checks for late wallets first. */
   connect(id?: string): Promise<void>;
   switchChain(): Promise<void>;
+  /** Forget the connection here, and ask the wallet to revoke access where it supports that. */
+  disconnect(): Promise<void>;
   /** Re-scan for wallets, e.g. after one injects late. */
   rescan(): void;
   /** Only valid when address is set. */
   client(): WalletClient | null;
 }
 const Ctx = createContext<WalletCtx | null>(null);
+
+/** Set when the user disconnects, so the page does not silently reconnect on the next visit. */
+const DISCONNECTED_KEY = "callout:disconnected";
+const isDisconnected = () => {
+  try {
+    return typeof window !== "undefined" && window.localStorage.getItem(DISCONNECTED_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+const setDisconnected = (v: boolean) => {
+  try {
+    if (v) window.localStorage.setItem(DISCONNECTED_KEY, "1");
+    else window.localStorage.removeItem(DISCONNECTED_KEY);
+  } catch {
+    /* storage blocked: the flag is a convenience only */
+  }
+};
 
 function injected(): Eip1193 | null {
   return typeof window === "undefined" ? null : ((window as unknown as { ethereum?: Eip1193 }).ethereum ?? null);
@@ -99,13 +119,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     const p = active?.provider;
     if (!p) return;
     let alive = true;
-    p.request({ method: "eth_accounts" })
-      .then((a) => alive && setAddress(((a as string[])[0] as `0x${string}`) ?? null))
-      .catch(() => {});
+    if (!isDisconnected())
+      p.request({ method: "eth_accounts" })
+        .then((a) => alive && setAddress(((a as string[])[0] as `0x${string}`) ?? null))
+        .catch(() => {});
     p.request({ method: "eth_chainId" })
       .then((c) => alive && setChainId(parseInt(c as string, 16)))
       .catch(() => {});
-    const onAcc = (a: string[]) => setAddress((a[0] as `0x${string}`) ?? null);
+    const onAcc = (a: string[]) => {
+      if (!isDisconnected()) setAddress((a[0] as `0x${string}`) ?? null);
+    };
     const onChain = (c: string) => setChainId(parseInt(c, 16));
     p.on?.("accountsChanged", onAcc as never);
     p.on?.("chainChanged", onChain as never);
@@ -127,6 +150,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         return;
       }
       setNoWallet(false);
+      setDisconnected(false);
       if (pick) setSelectedId(pick.id);
       setConnecting(true);
       try {
@@ -169,6 +193,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const disconnect = useCallback(async () => {
+    setDisconnected(true);
+    setAddress(null);
+    const p = activeRef.current?.provider ?? injected();
+    try {
+      // Supported by MetaMask and others; wallets without it simply keep their own permission list.
+      await p?.request({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] });
+    } catch {
+      /* not supported: the app has still forgotten the connection */
+    }
+  }, []);
+
   const value = useMemo<WalletCtx>(
     () => ({
       address,
@@ -179,6 +215,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       noWallet,
       connect,
       switchChain,
+      disconnect,
       rescan,
       client: () => {
         const p = activeRef.current?.provider ?? injected();
@@ -186,7 +223,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         return createWalletClient({ account: address, chain: somniaTokyo, transport: custom(p) });
       },
     }),
-    [address, chainId, found, connecting, noWallet, connect, switchChain, rescan],
+    [address, chainId, found, connecting, noWallet, connect, switchChain, disconnect, rescan],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
