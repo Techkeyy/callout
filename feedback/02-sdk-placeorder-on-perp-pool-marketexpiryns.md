@@ -4,7 +4,7 @@ Area: SDK
 
 ## Steps to reproduce
 1. Install `@somnia-chain/markets-sdk@0.33.0` and create a `SomniaMarkets` exchange for Hideki (chain 50383) with any private key. The key does not need funds: the call fails before anything is broadcast.
-2. Call the generic binary-style order method on a perp pool, the ETH perp pool `0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0`:
+2. Call the generic binary-style order method on a perp pool, the BTC perp pool `0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0`:
 ```ts
 const trader = exchange.trader;
 await trader.placeOrder({ pool: "0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0", side: "BUY_YES", price: 1000000000000000000n, quantity: 1000000000000000n });

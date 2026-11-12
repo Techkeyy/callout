@@ -26,7 +26,7 @@ Observed on 2026-11-11 for every multi-digit value tested (12, 100, 65536, 21474
 The SDK's `OrdersOptions.userData` builds the same `userData: {_eq}` term, always alongside `owner: {_eq}`, so the SDK path works. The bug affects queries that look up orders by tag across all owners, which is the case the docs describe.
 
 ## Evidence
-- Tagged order, placed by the follower wallet on the ETH perp pool `0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0` (not on the builder's own account):
+- Tagged order, placed by the follower wallet on the BTC perp pool `0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0` (not on the builder's own account):
   `userData: 14560419070265524225`, status `Filled`, placed tx [0xd664cc3a6b28b24dbde1af26efc665640150a1b4ea4fe26450fa355c386904d3](https://explorer.testnet.somnia.network/tokyo/tx/0xd664cc3a6b28b24dbde1af26efc665640150a1b4ea4fe26450fa355c386904d3). A second tagged order, [0x13ef1b70d3187563f7cafdbdd526156d9424a406804ffe003facf8e138f0e69e](https://explorer.testnet.somnia.network/tokyo/tx/0x13ef1b70d3187563f7cafdbdd526156d9424a406804ffe003facf8e138f0e69e), has the same tag.
 - Request in step 2 and response:
 ```

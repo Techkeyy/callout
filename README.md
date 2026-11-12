@@ -251,12 +251,14 @@ Stack: Next.js 16, viem, `@somnia-chain/markets-sdk` 0.33, lightweight-charts, S
 
 ## dreamDEX feedback
 
-Four reproducible problems, written up with steps, expected and actual results in [feedback/](feedback/):
+Six reproducible problems, written up with steps, expected and actual results in [feedback/](feedback/):
 
 1. [Indexer: `userData` `_eq` filter returns "database query error"](feedback/01-indexer-userdata-filter.md) unless the query is also scoped to an owner.
 2. [SDK: `trader.placeOrder` on a perp pool fails in preflight with `marketExpiryNs reverted`](feedback/02-sdk-placeorder-on-perp-pool-marketexpiryns.md). Callout uses the raw PerpPool `placeOrder` instead.
 3. [Perp voucher: `claim()` reverts with an unknown error while eligibility says eligible](feedback/03-voucher-claim-reverts-while-eligible.md).
 4. [SDK: `loadMarkets().info.markPrice` is a stale indexer snapshot, not the live mark](feedback/04-loadmarkets-stale-markprice.md).
+5. [Builder fees can't be traced to an order](feedback/05-builder-fees-cannot-be-attributed.md): the perp `BuilderFeeCharged` event has no order ID or `userData`, and the indexer's `listBuilderFees` returns nothing, so a builder can't tell which order or creator earned a fee. This is why Callout allows one open call per caller per market.
+6. [Builder approval is per pool and per fee recipient](feedback/06-builder-approval-per-pool-per-recipient.md), so a platform that pays its creators directly makes every follower approve every creator on every market.
 
 ## License
 
