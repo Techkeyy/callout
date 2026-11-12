@@ -106,10 +106,18 @@ export function stopSafeMargin(notional: bigint, mark: bigint, stop: bigint, mmB
 }
 
 /** What a take must lock: the larger of the initial-margin requirement and the stop-safe amount. */
+/**
+ * What dreamDEX charges against margin up front when the order is placed, on top of the position's
+ * own requirement: the take is an IOC priced 1% through the mark (so it always fills), and that
+ * crossing distance is counted as an immediate loss, plus the 0.1% builder fee and the protocol fee.
+ * Found in UAT: a take sized on the position alone reverted with InsufficientMarginForOrder.
+ */
+export const ORDER_COST_BPS = 150n; // 1% crossing + 0.1% builder fee + up to 0.4% protocol fee and rounding
+
 export function marginForTake(notional: bigint, imfBps: bigint | undefined, mark: bigint, stop: bigint, mmBps?: bigint): bigint {
   const a = requiredMargin(notional, imfBps);
   const b = stopSafeMargin(notional, mark, stop, mmBps);
-  return a > b ? a : b;
+  return (a > b ? a : b) + (notional * ORDER_COST_BPS) / 10_000n;
 }
 
 /** True when the call stop triggers before the position would be liquidated. A null price means no liquidation. */
@@ -307,6 +315,13 @@ export function describeTakeError(err: unknown): TakeError {
   }
   if (/insufficient funds/i.test(text)) {
     return { kind: "error", message: "Your wallet has no STT for gas. Get testnet STT, then try again." };
+  }
+  // dreamDEX's own revert reasons, by name or by selector (the pool ABI does not carry them).
+  if (/InsufficientMarginForOrder|0x7ea61260/i.test(text)) {
+    return { kind: "error", message: "Your margin is not enough for this size at the current price. Nothing was taken. Add a little margin or pick a smaller size." };
+  }
+  if (/BuilderFeeExceedsApproval|0x528c953f/i.test(text)) {
+    return { kind: "error", message: "This wallet has not approved this caller on this market yet. Nothing was taken. Approve the caller, then take." };
   }
   if (/voucherBlocked/i.test(text)) {
     return { kind: "error", message: "Practice USDso cannot be used on this market. Deposit real test USDso instead." };

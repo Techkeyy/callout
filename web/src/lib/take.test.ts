@@ -24,6 +24,7 @@ import {
   CLAIM_REFUSED_COPY,
   unrealizedPnl,
   type SizeRules,
+  ORDER_COST_BPS,
 } from "./take.ts";
 import { classifyReadError, NOT_CONNECTED_COPY, READ_RETRIES, UNREACHABLE_COPY } from "./readstate.ts";
 import { ageLabel, isPriceUsable, markAgeSec, parseLiveState, toSeconds } from "./mark.ts";
@@ -198,7 +199,14 @@ describe("margin that keeps the stop ahead of liquidation", () => {
     const stop = (mark * 95n) / 100n;
     const need = marginForTake(notional, 280n, mark, stop, 125n);
     expect(need).toBeGreaterThan(requiredMargin(notional, 280n) * 2n);
-    expect(marginForTake(notional, 2000n, mark, (mark * 99n) / 100n, 125n)).toBe(requiredMargin(notional, 2000n));
+    const orderCost = (notional * ORDER_COST_BPS) / 10_000n;
+    expect(marginForTake(notional, 2000n, mark, (mark * 99n) / 100n, 125n)).toBe(requiredMargin(notional, 2000n) + orderCost);
+  });
+  it("adds the order's up-front cost (1% crossing plus fees) so a take never fails for margin", () => {
+    // UAT: a $39 take with the position margin alone reverted InsufficientMarginForOrder.
+    const stop = (mark * 99n) / 100n;
+    const base = requiredMargin(notional, 2000n);
+    expect(marginForTake(notional, 2000n, mark, stop, 125n) - base).toBe((notional * 150n) / 10_000n);
   });
   it("defaults the maintenance margin to 1.25%", () => {
     const stop = (mark * 95n) / 100n;
