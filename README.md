@@ -4,10 +4,9 @@
 
 [![ci](https://github.com/Techkeyy/callout/actions/workflows/ci.yml/badge.svg)](https://github.com/Techkeyy/callout/actions/workflows/ci.yml)
 
-**[Live app](https://callout-perps.vercel.app)** · **[Open calls](https://callout-perps.vercel.app/app?tab=explore)** · **[Leaderboard](https://callout-perps.vercel.app/board)** · **[CallBook v4.1 on the explorer](https://explorer.testnet.somnia.network/tokyo/address/0xc83b954b22003dbe498c47b2330699466c79661d)** · [Mechanism spec](docs/v4-mechanism.md) · [Security pass](docs/v4-audit.md) · [Feedback reports](feedback/)
-<!-- Demo video link -->
+**[Live app](https://callout-perps.vercel.app)** · **[Demo video (2:29)](https://youtu.be/1FJxxm9tlY0)** · **[Open calls](https://callout-perps.vercel.app/app?tab=explore)** · **[Leaderboard](https://callout-perps.vercel.app/board)** · **[CallBook v4.1 on the explorer](https://explorer.testnet.somnia.network/tokyo/address/0xc83b954b22003dbe498c47b2330699466c79661d)** · [Mechanism spec](docs/v4-mechanism.md) · [Security pass](docs/v4-audit.md) · [Feedback reports](feedback/)
 
-Callout turns a trade call into a shareable card that a follower can take on dreamDEX perps in a few clicks, with the call's stop and target already armed. It is for traders who post calls on X (callers) and the people who follow them (followers).
+Callout turns a trade call into a shareable card that a follower can take on dreamDEX perps in a few clicks, with the call's stop and target already armed. It is for anyone who posts trade calls, on X, Telegram, Discord or in a group chat (callers), and the people who follow them (followers). Every call gets its own link and share card, so it travels anywhere a link does.
 
 The caller posts the call on chain, where it can never be edited, and backs it with a USDso bond sized to how much trade size can follow it. The caller earns dreamDEX's 10 bps builder fee on every follower fill. Every outcome settles against the market's on-chain price: hit the target and the bond comes back; get stopped and it pays the takers; let it expire and it is settled at the price, so if the market moved against the call, the takers get a share.
 
@@ -17,10 +16,23 @@ Built solo by Techkeyy for the dreamDEX Perps Builder Bounty, MVP track. Somnia 
 
 **The core loop:** a caller posts a bonded call and shares its card, a follower takes it, the chain counts the take with Somnia Reactivity, anyone resolves it against the price, and the bond pays the caller or the takers. The result goes on the caller's public record.
 
+## What it looks like
+
+All screenshots are the live app on call #5, the call the demo video follows from post to payout.
+
+| | |
+|---|---|
+| ![Landing page](docs/img/landing.jpg) **The landing page.** Call it, back it, prove it, with a live ticker of recent calls. | ![Share sheet after posting](docs/img/share.jpg) **Posted.** The call is on chain and its card is ready for X, Telegram, WhatsApp, Farcaster, a copied link or a downloaded image. |
+| ![Call card with chart](docs/img/card.jpg) **Every card is live.** dreamDEX candles with the call's entry, stop and target drawn in. | ![Take panel](docs/img/take.jpg) **One click to take it.** Setup steps done, size picked, liquidation shown before the order. |
+| ![Closed trade](docs/img/closed.jpg) **The exact result.** Entry, exit and realized P&L read from the close receipt on chain. | ![Expired call with claim](docs/img/expired.jpg) **Wrong costs the caller.** Call #5 expired against the caller, so 37% of the bond went to the follower to claim. |
+
+![Leaderboard](docs/img/board.jpg)
+**The leaderboard.** Callers ranked by hit rate from their on-chain records. A losing expiry counts as a miss, the same as a stop.
+
 ## Try it in 2 minutes
 
 1. Open [callout-perps.vercel.app](https://callout-perps.vercel.app) with a browser wallet on Somnia Tokyo testnet, and get a little STT from the [faucet](https://explorer.testnet.somnia.network/tokyo/faucet).
-2. Open a finished call, for example [call #2](https://callout-perps.vercel.app/c/2) (a follower took it, it was stopped, and the follower claimed the bond). Look at the take count, the outcome and the caller's record.
+2. Open a finished call, for example [call #2](https://callout-perps.vercel.app/c/2) (a follower took it, it was stopped, and the follower claimed the whole bond) or [call #5](https://callout-perps.vercel.app/c/5) (it expired against the caller, and the follower claimed 37% of the bond). Look at the take count, the outcome and the caller's record.
 3. Go to [Explore](https://callout-perps.vercel.app/app?tab=explore), open a live call and press **Take**. The app walks you through gas, practice USDso, margin and a one-time approval of the caller, then places the order with the call's stop and target armed. The liquidation price is shown before you confirm.
 4. Or go to [Post a call](https://callout-perps.vercel.app/app), pick a market, set the stop, target and duration, post it and share the card.
 
@@ -109,6 +121,12 @@ CallBook v4.1 `0xc83b954b22003dbe498c47b2330699466c79661d`.
 | Call #2 follower take: Reactivity credited 19.370312 USDso covered, exactly fee × 1000 | [`0x476c4364...0d64`](https://explorer.testnet.somnia.network/tokyo/tx/0x476c4364f91b8e0a4e6d93d8db42bf3acc7f4f0d4bfe9f88dda493bdde0e0d64) |
 | Call #2 resolved STOPPED at 74,208.19 by the keeper | [`0xb7a08766...b112`](https://explorer.testnet.somnia.network/tokyo/tx/0xb7a0876621cbc50e2e286b2bbe3ac2b8f9d0e6e1da5a5eb418bff06cbd0fb112) |
 | Call #2: the follower claims the whole 5 USDso bond | [`0xf65aebc7...17b9`](https://explorer.testnet.somnia.network/tokyo/tx/0xf65aebc7a46654f3899e8aeeca488bdcbad9cd2b3c555150f08210c6056d17b9) |
+| Call #5 posted: long BTC, 250 USDso capacity, 5 USDso bond (the call in the demo video) | [`0x95e5da83...de5f`](https://explorer.testnet.somnia.network/tokyo/tx/0x95e5da837e2955890c6b5f3566ebf9667a96a4fbb02c52e2d96705d8cca3de5f) |
+| Call #5: Reactivity records the follower's take, 25.016996 USDso covered | [`0x9a67181b...ad5a`](https://explorer.testnet.somnia.network/tokyo/tx/0x9a67181bc90468ebbcfe5f9dbb8bb8aacd74d971c23b905824525d5162c1ad5a) |
+| Call #5: the follower closes the position, realized P&L +$0.0028 read from this receipt | [`0xa20b64d7...6495`](https://explorer.testnet.somnia.network/tokyo/tx/0xa20b64d78e9742fe287bfa05a948ce4927a6c4d6b6b2f771199ee7a9f78e6495) |
+| Call #5 settled EXPIRED at 73,400.68, below the entry, by the keeper | [`0x049bdfca...a0dd`](https://explorer.testnet.somnia.network/tokyo/tx/0x049bdfca46a976b6296a0c7a62226aafe4b8f1d57496ddf44bd19d205009a0dd) |
+| Call #5: the follower claims 1.865 USDso, 37% of the bond | [`0xf54b3079...2b91`](https://explorer.testnet.somnia.network/tokyo/tx/0xf54b307982a21a93df8614efea31ec759864fdec5d653e1c88a19aa3c1d22b91) |
+| Call #5: the caller claims the remaining 3.135 USDso | [`0xe40bea22...6e8b`](https://explorer.testnet.somnia.network/tokyo/tx/0xe40bea223318f5170107295af3055ff54dd51703faafc20c70a6fdb574cf6e8b) |
 
 ### v4: the expired-at-a-loss settlement
 
@@ -227,9 +245,9 @@ Stack: Next.js 16, viem, `@somnia-chain/markets-sdk` 0.33, lightweight-charts, S
 
 ## X posts
 
-<!-- X post 1 link -->
-<!-- X post 2 link -->
-<!-- X post 3 link -->
+1. [Launch: "anyone can post a trade call. nobody pays when they're wrong."](https://x.com/Praise_Prodigyy/status/2120506520458682777), with the 35-second teaser.
+2. [Taking a call: one click and I'm in on dreamDEX perps, stop and target armed](https://x.com/Praise_Prodigyy/status/2120771966701592941), with a taker's share card.
+3. [Callout is live](https://x.com/Praise_Prodigyy/status/2120863728719864183), with the full demo video.
 
 ## dreamDEX feedback
 
