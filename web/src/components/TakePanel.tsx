@@ -4,7 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits } from "viem";
 import { useWallet } from "@/lib/wallet";
 import type { ClientMarket } from "@/lib/useMarkets";
-import { publicClient } from "@/lib/calls";
+import { publicClient, readClaimable, readCovered, readResult, readTakes } from "@/lib/calls";
+import { txUrl } from "@/lib/chain";
+import { formatHeld, isVerifiedClose, realizedPercent } from "@/lib/fills";
+import { closedViewOf, isClosed, loadTrade, parseTxHash, saveTrade, takePatch, totalFees, type ClosedView } from "@/lib/trade";
+import { takerPayoutOf } from "@/lib/cardmodel";
 import { shortAddress } from "@/lib/time";
 import { formatDisplay, displayDecimals } from "@/lib/prices";
 import {
@@ -50,13 +54,17 @@ interface Props {
   onTaken?: () => void;
   /** The wallet's live position on this market (null when flat or unknown), for the taker share card. */
   onPosition?: (p: { avgEntry: bigint; pnl: bigint; pct: number } | null) => void;
+  /** The wallet's verified closed trade on this call (null when none), for the closed taker share card. */
+  onClosed?: (c: { entry: bigint; exit: bigint; realizedPnl: bigint; pct: number; closeTx: string } | null) => void;
+  /** Open the share sheet for the closed trade. */
+  onShareClosed?: () => void;
 }
 
 const PRESETS = [25, 50, 100];
 const STEP_LABEL: Record<string, string> = { connect: "Connect", gas: "Get set up", margin: "Add margin", approve: "Approve caller", take: "Take" };
 const E18 = 10n ** 18n;
 
-type Busy = null | "deposit" | "voucher" | "approve" | "take" | "arm" | "close" | "check";
+type Busy = null | "deposit" | "voucher" | "approve" | "take" | "arm" | "close" | "check" | "withdraw";
 
 function trimUnits(v: bigint, d: number, max = 8): string {
   const s = formatUnits(v < 0n ? -v : v, d);
@@ -72,9 +80,17 @@ const DONE: Record<string, string> = {
   take: "You took the call.",
   arm: "Stop and target are set.",
   close: "Position closed.",
+  withdraw: "Withdrawn to your wallet.",
 };
 
-export default function TakePanel({ callId, caller, isLong, entry, stop, target, status, market, remaining, onChanged, onTaken, onPosition }: Props) {
+/** "+$0.12", "-$1.30", "$0.00". Four decimals under a cent so a small amount never reads as zero. */
+function money(v: bigint, signed = false): string {
+  const abs = v < 0n ? -v : v;
+  const dp = abs !== 0n && abs < E18 / 100n ? 4 : 2;
+  return `${signed ? (v > 0n ? "+" : v < 0n ? "-" : "") : ""}$${formatDisplay(abs, dp)}`;
+}
+
+export default function TakePanel({ callId, caller, isLong, entry, stop, target, status, market, remaining, onChanged, onTaken, onPosition, onClosed, onShareClosed }: Props) {
   const w = useWallet();
   const [rd, setRd] = useState<dex.Readiness | null>(null);
   const [pos, setPos] = useState<dex.PositionRead | null>(null);
@@ -91,6 +107,9 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
   const [busy, setBusy] = useState<Busy>(null);
   const [msg, setMsg] = useState<{ tone: "info" | "warn" | "ok"; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [closed, setClosed] = useState<ClosedView | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+  const [payout, setPayout] = useState<{ amount: bigint | null; claimable: bigint | null } | null>(null);
   const marketRef = useRef(market);
   marketRef.current = market;
 
@@ -235,8 +254,9 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
     take: "Taking the call. Confirm in your wallet.",
     arm: "Setting your stop and target. Confirm in your wallet.",
     close: "Closing your position. Confirm in your wallet.",
+    withdraw: "Withdrawing to your wallet. Confirm in your wallet.",
   };
-  async function run(kind: Exclude<Busy, null>, fn: (c: dex.Ctx) => Promise<void>) {
+  async function run(kind: Exclude<Busy, null>, fn: (c: dex.Ctx) => Promise<void | string>) {
     const c = ctx();
     if (!c) return;
     setMsg(null);
@@ -244,8 +264,8 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
     const tid = toast.show({ tone: "pending", text: PENDING[kind] ?? "Confirm in your wallet." });
     try {
       if (w.wrongChain) await w.switchChain();
-      await fn(c);
-      toast.update(tid, { tone: "ok", text: DONE[kind] ?? "Done." });
+      const done = await fn(c);
+      toast.update(tid, { tone: "ok", text: done || (DONE[kind] ?? "Done.") });
     } catch (e) {
       console.error(`[callout] ${kind} failed`, e);
       const d = describeTakeError(e, kind);
@@ -285,6 +305,9 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
     run("take", async (c) => {
       const res = await dex.takeCall(c, { callId: BigInt(callId), caller, isLong, quantity: qty });
       setPos(res.after);
+      setClosed(null);
+      setDismissed(false);
+      saveTakeLocally(c, res);
       setBusy("arm");
       try {
         await dex.armBracket(c, { isLong, stop, target });
@@ -307,12 +330,38 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
     });
   const doClose = () =>
     run("close", async (c) => {
-      await dex.closePosition(c, pos);
+      const res = await dex.closePosition(c, pos);
+      // The result comes straight from the close receipt, so it shows the moment the position is gone.
+      let toastText: string | undefined;
+      if (res.after.size === 0n) {
+        const view = closedViewOf({ closeTx: res.hash, isLong, summary: res.summary, closedAt: res.closedAt, stored: loadTrade(callId, c.account), baseDecimals: c.market.baseDecimals });
+        if (view) {
+          saveTrade(callId, c.account, { closeTx: res.hash, ...(res.closedAt !== null ? { closedAt: res.closedAt } : {}), exitAvg: view.exit.toString(), realizedPnl: view.realizedPnl.toString(), closeFee: view.closeFee.toString(), closeQty: view.qty.toString(), ...(view.entry !== null ? { entryAvg: view.entry.toString() } : {}) });
+          setClosed(view);
+          setDismissed(false);
+          toastText = `Position closed. Realized P&L ${money(view.realizedPnl, true)}.`;
+        }
+      }
+      setPos(res.after);
       const live = await dex.readBracket(c).catch(() => []);
       if (live.length > 0) await dex.cancelBracket(c, live);
       setMsg({ tone: "ok", text: "Position closed. Your stop and target were cancelled and the locked STT is back." });
       onChanged();
+      return toastText;
     });
+  const doWithdraw = () =>
+    run("withdraw", async (c) => {
+      const amount = rd?.withdrawable ?? 0n;
+      if (amount <= 0n) throw new Error("Nothing to withdraw.");
+      await dex.withdrawAll(c, amount);
+    });
+
+  /** Remember the take on this device, so the closed-trade result can show the entry, the fees and how long it was held. */
+  function saveTakeLocally(c: dex.Ctx, res: Awaited<ReturnType<typeof dex.takeCall>>) {
+    const prev = loadTrade(callId, c.account);
+    const { patch, fresh } = takePatch(prev, { takeTx: res.hash, openedAt: res.openedAt, entryAvg: res.after.avgEntryPrice, size: res.after.size, openFee: res.summary.fee, builderFee: res.summary.builderFee });
+    saveTrade(callId, c.account, patch, { fresh });
+  }
 
   async function copyAddress() {
     if (!w.address) return;
@@ -338,6 +387,94 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
     } else onPosition(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posKey]);
+
+  // A closed trade for this call: from this device's storage and/or the ?close=<tx> link, always checked against the chain.
+  useEffect(() => {
+    if (!w.address || !market) return;
+    const wallet = w.address;
+    const m = market;
+    const stored = loadTrade(callId, wallet);
+    let urlTx: `0x${string}` | null = null;
+    try {
+      urlTx = parseTxHash(new URLSearchParams(window.location.search).get("close"));
+    } catch {
+      urlTx = null;
+    }
+    // A saved trade that is still open wins over an old link: the link would show a trade that is not the current one.
+    const tx = isClosed(stored) ? (stored.closeTx as `0x${string}`) : stored?.takeTx ? null : urlTx;
+    if (!tx) {
+      setClosed(null);
+      return;
+    }
+    let alive = true;
+    // Show what was saved at once; the chain then confirms or replaces it.
+    if (isClosed(stored) && stored.exitAvg && stored.realizedPnl && stored.closeQty) {
+      const entry = stored.entryAvg ? BigInt(stored.entryAvg) : null;
+      const qty = BigInt(stored.closeQty);
+      setClosed((cur) => cur ?? {
+        closeTx: tx,
+        isLong,
+        entry,
+        exit: BigInt(stored.exitAvg!),
+        qty,
+        realizedPnl: BigInt(stored.realizedPnl!),
+        closeFee: BigInt(stored.closeFee ?? "0"),
+        openFee: stored.openFee !== undefined ? BigInt(stored.openFee) : null,
+        builderFee: stored.builderFee !== undefined ? BigInt(stored.builderFee) : null,
+        openedAt: stored.openedAt ?? null,
+        closedAt: stored.closedAt ?? null,
+        pct: entry ? realizedPercent(BigInt(stored.realizedPnl!), entry, qty, m.baseDecimals) : null,
+      });
+    }
+    (async () => {
+      try {
+        const receipt = await withRetry(() => withTimeout(publicClient.getTransactionReceipt({ hash: tx }), 15000), 2, 800);
+        const summary = isVerifiedClose(receipt as never, wallet, m.pool, m.marginBank as `0x${string}`);
+        if (!summary) {
+          if (alive && !isClosed(stored)) setClosed(null);
+          return;
+        }
+        const closedAt = await dex.blockTime(publicClient as never, receipt.blockNumber);
+        const view = closedViewOf({ closeTx: tx, isLong, summary: summary, closedAt, stored, baseDecimals: m.baseDecimals });
+        if (!alive || !view) return;
+        setClosed(view);
+        if (!isClosed(stored)) saveTrade(callId, wallet, { closeTx: tx, ...(closedAt !== null ? { closedAt } : {}), exitAvg: view.exit.toString(), realizedPnl: view.realizedPnl.toString(), closeFee: view.closeFee.toString(), closeQty: view.qty.toString(), ...(view.entry !== null ? { entryAvg: view.entry.toString() } : {}) });
+      } catch {
+        /* the chain could not be reached: keep what was saved, if anything */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [w.address, pool, callId]);
+
+  const showClosed = !!closed && !dismissed && !hasPosition && pos !== null;
+  const closedTx = closed?.closeTx ?? null;
+  // The bond payout is a different thing from the trade's P&L: show it on its own line.
+  useEffect(() => {
+    if (!showClosed || !w.address) return;
+    let alive = true;
+    const id = BigInt(callId);
+    const who = w.address;
+    (async () => {
+      const [res, cov, tk, cl] = await Promise.all([readResult(id), readCovered(id, who), readTakes(id), readClaimable(id, who)]);
+      if (!alive) return;
+      const r = res && res.outcome !== "open" ? { price: res.price, forfeit: res.forfeit } : null;
+      setPayout({ amount: takerPayoutOf({ outcome: res?.outcome ?? "open", result: r, covered: cov, totalCovered: tk?.covered ?? null, claimable: cl }), claimable: cl });
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [showClosed, closedTx, w.address, callId]);
+
+  // Tell the page about the verified closed trade, for the closed share card.
+  useEffect(() => {
+    if (!onClosed) return;
+    if (showClosed && closed && closed.entry !== null && closed.pct !== null) onClosed({ entry: closed.entry, exit: closed.exit, realizedPnl: closed.realizedPnl, pct: closed.pct, closeTx: closed.closeTx });
+    else onClosed(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showClosed, closedTx, closed?.pct]);
 
   // ---------- render ----------
   const sym = market ? market.name.split("-")[0] : "";
@@ -393,6 +530,89 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
         <p className="hint" style={{ marginTop: 8 }}>
           Closing sells your whole {sym} position at the market and cancels your stop and target. Your wallet will ask you to confirm each step. P&amp;L stays unrealized until you close.
         </p>
+      </div>
+    );
+  }
+
+  if (showClosed && closed && market) {
+    const c = closed;
+    const sign = c.realizedPnl > 0n ? "long" : c.realizedPnl < 0n ? "short" : undefined;
+    const color = sign ? `var(--${sign})` : undefined;
+    const held = c.openedAt !== null && c.closedAt !== null ? formatHeld(c.closedAt - c.openedAt) : null;
+    const fees = totalFees(c);
+    const net = c.openFee !== null && c.builderFee !== null ? c.realizedPnl - fees.total : null;
+    return (
+      <div className="panel" aria-live="polite">
+        <h2>Trade closed</h2>
+        <dl className="dist" style={{ marginTop: 8, borderTop: 0, paddingTop: 0 }}>
+          <div>
+            <dt className="dist-k">Direction and size</dt>
+            <dd className="dist-v num" style={{ margin: 0 }}>
+              {c.isLong ? "Long " : "Short "}
+              {trimUnits(c.qty, market.baseDecimals)} {sym}
+            </dd>
+          </div>
+          <div>
+            <dt className="dist-k">Entry (avg)</dt>
+            <dd className="dist-v num" style={{ margin: 0 }}>{c.entry !== null ? formatDisplay(c.entry, dp) : "-"}</dd>
+          </div>
+          <div>
+            <dt className="dist-k">Exit (avg)</dt>
+            <dd className="dist-v num" style={{ margin: 0 }}>{formatDisplay(c.exit, dp)}</dd>
+          </div>
+          {held && (
+            <div>
+              <dt className="dist-k">Held</dt>
+              <dd className="dist-v num" style={{ margin: 0 }}>{held}</dd>
+            </div>
+          )}
+          <div>
+            <dt className="dist-k">Realized P&amp;L</dt>
+            <dd className="dist-v num" style={{ margin: 0, color }}>
+              {money(c.realizedPnl, true)}
+              {c.pct !== null && ` (${c.pct > 0 ? "+" : c.pct < 0 ? "-" : ""}${Math.abs(c.pct).toFixed(2)}%)`}
+            </dd>
+          </div>
+          <div>
+            <dt className="dist-k">{fees.complete ? "Fees paid on this trade" : "Fees paid on the close"}</dt>
+            <dd className="dist-v num" style={{ margin: 0 }}>{money(fees.complete ? fees.total : c.closeFee)}</dd>
+          </div>
+          {net !== null && (
+            <div>
+              <dt className="dist-k">After fees</dt>
+              <dd className="dist-v num" style={{ margin: 0, color: net > 0n ? "var(--long)" : net < 0n ? "var(--short)" : undefined }}>{money(net, true)}</dd>
+            </div>
+          )}
+          <div>
+            <dt className="dist-k">Bond payout</dt>
+            <dd className="dist-v num" style={{ margin: 0 }}>
+              {payout === null ? "..." : payout.amount === null ? "None" : `${formatDisplay(payout.amount, 2)} USDso${payout.claimable && payout.claimable > 0n ? ", claim it above" : ""}`}
+            </dd>
+          </div>
+        </dl>
+        <p className="hint" style={{ marginTop: 8 }}>
+          Realized P&amp;L is the price result the exchange reported for your close. Fees are charged on top of it.
+        </p>
+        <p className="num" style={{ marginTop: 12 }}>
+          Back in your dreamDEX margin: {rd ? `${formatDisplay(rd.withdrawable, 2)} USDso` : "..."}
+        </p>
+        {msg && <p className={`notice ${msg.tone === "warn" ? "is-warn" : msg.tone === "ok" ? "is-ok" : ""}`} style={{ marginTop: 12 }} role="status">{msg.text}</p>}
+        <div className="actions" style={{ marginTop: 12 }}>
+          {onShareClosed && c.entry !== null && c.pct !== null && (
+            <button type="button" className="btn btn-primary" onClick={onShareClosed}>
+              Share your result
+            </button>
+          )}
+          <button className="btn" onClick={doWithdraw} disabled={busy !== null || !rd || rd.withdrawable <= 0n}>
+            {busy === "withdraw" ? "Waiting for your wallet..." : "Withdraw to wallet"}
+          </button>
+          <a className="btn" href={txUrl(c.closeTx)} target="_blank" rel="noopener noreferrer">View close transaction</a>
+          {status === "open" && !block && (
+            <button type="button" className="btn" onClick={() => setDismissed(true)}>
+              Take it again
+            </button>
+          )}
+        </div>
       </div>
     );
   }

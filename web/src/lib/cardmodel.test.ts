@@ -120,3 +120,35 @@ describe("record card", () => {
     expect(compactRecord({ hits: 0, stops: 0, expired: 0, expiredLosses: 0 })).toBeNull();
   });
 });
+
+describe("closed taker card", () => {
+  const closedIn = {
+    ...long,
+    taker: "0x5Eb1893EE7522309FC2f9b73588c245B03d345FF",
+    covered: 25n * E18,
+    totalCovered: 100n * E18,
+    claimable: null,
+    mark: null as bigint | null,
+    closed: { entry: 2_000n * E18, exit: 2_024n * E18, realizedPnl: 48n * E18 / 100n, pct: 1.2, closeTx: "0x" + "ab".repeat(32) },
+  };
+  it("stamps CLOSED with the realized P&L, entry and exit", () => {
+    const m = takerCardModel({ ...closedIn, isLong: true, dp: 0 });
+    expect(m.stamp).toBe("CLOSED");
+    expect(m.tone).toBe("long");
+    expect(m.big?.k).toBe("My realized P&L");
+    expect(m.big?.v).toBe("+1.2%");
+    expect(m.big?.note).toBe("Closed at 2,024");
+    expect(m.cells.map((c) => [c.k, c.v])).toEqual([["My entry", "2,000"], ["My exit", "2,024"], ["Realized", "+$0.48"]]);
+    expect(m.text).toBe("closed my take on 0x8284...0d58's call: +1.2% realized (+$0.48). callout:");
+  });
+  it("is red for a loss and carries the close hash in the share link and the image", () => {
+    const m = takerCardModel({ ...closedIn, closed: { ...closedIn.closed, realizedPnl: -(2n * E18) / 100n, pct: -0.1 } });
+    expect(m.tone).toBe("short");
+    expect(m.cells[2]).toMatchObject({ v: "-$0.02", tone: "short" });
+    expect(m.path).toBe(`/c/2/taker/0x5Eb1893EE7522309FC2f9b73588c245B03d345FF?close=0x${"ab".repeat(32)}`);
+    expect(m.imagePath).toBe(`/c/2/taker/0x5Eb1893EE7522309FC2f9b73588c245B03d345FF/image?close=0x${"ab".repeat(32)}`);
+  });
+  it("without closed data the normal card is unchanged", () => {
+    expect(takerCardModel({ ...closedIn, closed: null }).stamp).toBe("TAKEN");
+  });
+});

@@ -4,6 +4,7 @@ import { SomniaMarkets, SOMNIA_HIDEKI_TESTNET_ADDRESSES, perpPoolWriteAbi } from
 import type { PublicClient, WalletClient } from "viem";
 import { callBookAbi } from "./callbook.abi.ts";
 import { INDEXER_URL, WS_URL, somniaTokyo } from "./chain.ts";
+import { summarizeFill, type FillSummary } from "./fills.ts";
 import { voucherUsable, cardTag, crossingPrice, FEE_BPS_TIMES_1K, IOC, U64_MAX, ZERO_ADDRESS, withRetry } from "./take.ts";
 
 export const OPERATOR_REGISTRY = "0x6B2FbfeD328FF5F20C0BE7D3C3437613aFFE8D3a" as const;
@@ -216,7 +217,17 @@ export async function takeCall(c: Ctx, a: { callId: bigint; caller: Addr; isLong
   const after = await readPosition(c);
   const filled = after.size - before.size;
   if (filled === 0n) throw new Error("ImmediateOrCancelNoFill");
-  return { ...sent, price, before, after, filled };
+  const summary = summarizeFill(sent.receipt, c.account, c.market.pool, c.market.marginBank);
+  return { ...sent, price, before, after, filled, summary, openedAt: await blockTime(c.pub, sent.receipt.blockNumber) };
+}
+
+/** The chain's timestamp for a block (seconds), or null when it cannot be read. */
+export async function blockTime(pub: PublicClient, blockNumber: bigint): Promise<number | null> {
+  try {
+    return Number((await pub.getBlock({ blockNumber })).timestamp);
+  } catch {
+    return null;
+  }
 }
 
 /** Arm the call's target and stop on the whole position. Locks 0.30 STT, refunded on cancel. */
@@ -266,7 +277,8 @@ export async function closePosition(c: Ctx, known?: PositionRead | null) {
   const price = crossingPrice(c.market.markPrice, c.market.tickSize, !isLong);
   const sent = await sendOrder(c, { isBid: !isLong, userData: 0n, price, quantity: qty, builder: ZERO_ADDRESS, fee: 0n });
   const after = await readPosition(c);
-  return { ...sent, before: pos, after, price };
+  const summary: FillSummary = summarizeFill(sent.receipt, c.account, c.market.pool, c.market.marginBank);
+  return { ...sent, before: pos, after, price, summary, closedAt: await blockTime(c.pub, sent.receipt.blockNumber) };
 }
 
 // ---------- earnings ----------

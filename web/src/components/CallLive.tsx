@@ -57,6 +57,7 @@ export default function CallLive(p: Props) {
   const toast = useToast();
   const [justTook, setJustTook] = useState(false);
   const [myPos, setMyPos] = useState<{ avgEntry: bigint; pnl: bigint; pct: number } | null>(null);
+  const [myClosed, setMyClosed] = useState<{ entry: bigint; exit: bigint; realizedPnl: bigint; pct: number; closeTx: string } | null>(null);
   const [sheet, setSheet] = useState<"call" | "taker" | null>(null);
   const autoOpened = useRef(false);
   const { markets, stale } = useMarkets(4000, p.pool);
@@ -178,6 +179,7 @@ export default function CallLive(p: Props) {
         claimable,
         mark: !resolved && live && live.markOk ? live.markPrice : null,
         position: !resolved ? myPos : null,
+        closed: myClosed,
       }
     : null;
   const takerModel = takerInput ? takerCardModel(takerInput) : null;
@@ -284,6 +286,8 @@ export default function CallLive(p: Props) {
           onChanged={refreshTakes}
           onTaken={() => setJustTook(true)}
           onPosition={setMyPos}
+          onClosed={setMyClosed}
+          onShareClosed={() => setSheet("taker")}
         />
         <div className="panel share-prompt">
           <h2>{shareHead}</h2>
@@ -291,7 +295,7 @@ export default function CallLive(p: Props) {
           <div className="actions">
             {(shareMode === "took" || shareMode === "taker") && takerModel && (
               <button type="button" className="btn btn-primary" onClick={() => setSheet("taker")}>
-                Share my take
+                {myClosed ? "Share my result" : "Share my take"}
               </button>
             )}
             <button type="button" className={`btn ${shareMode === "mine" || shareMode === "call" ? "btn-primary" : ""}`} onClick={() => setSheet("call")}>
@@ -374,7 +378,7 @@ export default function CallLive(p: Props) {
       </div>
       </div>
       {sheet === "call" && <ShareSheet title={resolved ? "Share this result" : "Share this call"} model={callModel} onClose={() => setSheet(null)} />}
-      {sheet === "taker" && takerModel && <ShareSheet title="Share your take" intro="The call move is the price move of the call. The bond payout is what the caller's bond paid takers." model={takerModel} onClose={() => setSheet(null)} />}
+      {sheet === "taker" && takerModel && <ShareSheet title={myClosed ? "Share your result" : "Share your take"} intro={myClosed ? "Your entry, exit and realized P&L come from your close on chain. Anyone can check the transaction." : "The call move is the price move of the call. The bond payout is what the caller's bond paid takers."} model={takerModel} onClose={() => setSheet(null)} />}
     </div>
   );
 }

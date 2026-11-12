@@ -2,12 +2,14 @@
 // so the image route can fall back to the generic card instead of a 500.
 import { loadBoard } from "./board";
 import { callCardModel, recordCardModel, takerCardModel, type CardModel } from "./cardmodel";
-import { mapLimit, readCall, readCallsOf, readClaimable, readCovered, readHasTaken, readRecord, readResult, readTakes } from "./calls";
+import { publicClient, mapLimit, readCall, readCallsOf, readClaimable, readCovered, readHasTaken, readRecord, readResult, readTakes } from "./calls";
 import { getMarketMeta } from "./markets";
 import { rankBoard } from "./outcome";
 import { displayDecimals } from "./prices";
 import { pnlPercent, unrealizedPnl, withTimeout } from "./take";
 import { makeMarkets } from "./dex";
+import { entryFromPnl, isVerifiedClose, realizedPercent } from "./fills";
+import { parseTxHash } from "./trade";
 
 let fx: ReturnType<typeof makeMarkets> | null = null;
 
@@ -52,7 +54,7 @@ export async function loadCallModel(id: bigint): Promise<CardModel | null> {
 }
 
 /** The taker card. When the wallet did not take the call, this is the plain call card, so nothing false is claimed. */
-export async function loadTakerModel(id: bigint, taker: `0x${string}`): Promise<CardModel | null> {
+export async function loadTakerModel(id: bigint, taker: `0x${string}`, close?: string | null): Promise<CardModel | null> {
   const b = await loadBase(id);
   if (!b) return null;
   const [took, covered, claimable] = await Promise.all([readHasTaken(id, taker, FAST), readCovered(id, taker, FAST), readClaimable(id, taker, FAST)]);
@@ -68,6 +70,25 @@ export async function loadTakerModel(id: bigint, taker: `0x${string}`): Promise<
       if (p.size !== 0n) position = { avgEntry: p.avgEntryPrice, pnl: unrealizedPnl(p.size, p.avgEntryPrice, mark, Number(b.m.baseDecimals)), pct: pnlPercent(p.size, p.avgEntryPrice, mark) };
     } catch {
       /* no live position read: the card falls back to the call's move */
+    }
+  }
+  // A ?close=<tx> link shows the CLOSED card only if the chain confirms it: the taker's own tx, taking this pool to flat.
+  // Every number comes from the receipt; nothing in the URL but the hash is read.
+  let closed: { entry: bigint; exit: bigint; realizedPnl: bigint; pct: number; closeTx: string } | null = null;
+  const closeTx = parseTxHash(close);
+  if (closeTx && b.m) {
+    try {
+      const receipt = await withTimeout(publicClient.getTransactionReceipt({ hash: closeTx }), 4500);
+      const s = isVerifiedClose(receipt as never, taker, b.call.pool, String(b.m.marginBank) as `0x${string}`);
+      const dec = Number(b.m.baseDecimals);
+      if (s && s.avgPrice !== null) {
+        const isLong = b.call.isLong;
+        const entry = entryFromPnl(isLong, s.avgPrice, s.realizedPnl, s.qty, dec);
+        const pct = entry ? realizedPercent(s.realizedPnl, entry, s.qty, dec) : null;
+        if (entry && pct !== null) closed = { entry, exit: s.avgPrice, realizedPnl: s.realizedPnl, pct, closeTx };
+      }
+    } catch {
+      /* unverifiable: the normal card */
     }
   }
   return takerCardModel({
@@ -88,7 +109,8 @@ export async function loadTakerModel(id: bigint, taker: `0x${string}`): Promise<
     totalCovered: b.takes?.covered ?? null,
     claimable,
     mark,
-    position,
+    position: closed ? null : position,
+    closed,
   });
 }
 

@@ -153,6 +153,8 @@ export interface TakerCardInput extends Omit<CallCardInput, "record"> {
   mark: bigint | null;
   /** The taker's live position, when they still hold it: their own entry and unrealized P&L (signed, 18-decimal USDso). */
   position?: { avgEntry: bigint; pnl: bigint; pct: number } | null;
+  /** The taker's closed trade, already verified against the chain (their own entry, exit and the protocol's realized P&L). */
+  closed?: { entry: bigint; exit: bigint; realizedPnl: bigint; pct: number; closeTx: string } | null;
 }
 
 /** The bond payout a taker got (or can claim), or null when there is none. */
@@ -194,6 +196,30 @@ export function takerCardModel(i: TakerCardInput): CardModel {
     const mine = moveStat("My P&L, live", live.pct);
     big = mine && { ...mine, note: move === null ? "Call still open." : `Call move ${fmtMove(move)} so far.` };
     cells.splice(0, cells.length, { k: "My entry", v: f(live.avgEntry) }, i.mark ? { k: "Mark", v: f(i.mark) } : { k: "Target", v: f(i.target), tone: "long" }, { k: "My P&L", v: `${live.pnl > 0n ? "+" : live.pnl < 0n ? "-" : ""}$${formatDisplay(pnlAbs, 2)}`, tone: pnlTone });
+  }
+  if (i.closed) {
+    const c = i.closed;
+    const ctone: Tone = c.realizedPnl > 0n ? "long" : c.realizedPnl < 0n ? "short" : "ink";
+    const abs = c.realizedPnl < 0n ? -c.realizedPnl : c.realizedPnl;
+    const signed = `${c.realizedPnl > 0n ? "+" : c.realizedPnl < 0n ? "-" : ""}$${formatDisplay(abs, 2)}`;
+    const mine = moveStat("My realized P&L", c.pct);
+    return {
+      kind: "taker",
+      stamp: "CLOSED",
+      tone: ctone,
+      eyebrow: `Call #${id}`,
+      headline: "I closed my take",
+      sub: `${i.isLong ? "LONG" : "SHORT"} ${i.market}`,
+      subTone: i.isLong ? "long" : "short",
+      big: mine && { ...mine, note: `Closed at ${f(c.exit)}` },
+      cells: [{ k: "My entry", v: f(c.entry) }, { k: "My exit", v: f(c.exit) }, { k: "Realized", v: signed, tone: ctone }],
+      footL: { k: "Taker", v: shortAddress(i.taker) },
+      footR: payout ? { k: "Bond payout", v: `${usd(payout)} USDso` } : { k: "Caller", v: callerShort },
+      text: `closed my take on ${callerShort}'s call: ${fmtMove(c.pct)} realized (${signed}). callout:`,
+      path: `/c/${id}/taker/${i.taker}?close=${c.closeTx}`,
+      imagePath: `/c/${id}/taker/${i.taker}/image?close=${c.closeTx}`,
+      fileId: `${id}-${i.taker.slice(2, 8).toLowerCase()}-closed`,
+    };
   }
   return {
     kind: "taker",

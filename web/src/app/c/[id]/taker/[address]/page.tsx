@@ -7,29 +7,37 @@ import ShareLauncher from "@/components/ShareLauncher";
 import { parseCallId } from "@/lib/calls";
 import { loadTakerModel } from "@/lib/cardload";
 import { shortAddress } from "@/lib/time";
+import { parseTxHash } from "@/lib/trade";
 
 export const dynamic = "force-dynamic";
 
-type Params = { params: Promise<{ id: string; address: string }> };
+type Params = { params: Promise<{ id: string; address: string }>; searchParams: Promise<{ close?: string | string[] }> };
 
-const load = cache(async (id: bigint, who: `0x${string}`) => {
+const closeOf = (v: string | string[] | undefined) => parseTxHash(Array.isArray(v) ? v[0] : v);
+
+const load = cache(async (id: bigint, who: `0x${string}`, close: string | null) => {
   try {
-    return await loadTakerModel(id, who);
+    return await loadTakerModel(id, who, close);
   } catch {
     return null;
   }
 });
 
-export async function generateMetadata({ params }: Params): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: Params): Promise<Metadata> {
   const { id: raw, address } = await params;
+  const close = closeOf((await searchParams).close);
   const id = parseCallId(raw);
   const title = id && isAddress(address) ? `${shortAddress(getAddress(address))} took call #${id}` : "A Callout take";
   const description = "A call with a bond behind it. The result is on chain and cannot be edited.";
-  return { title, description, openGraph: { title, description }, twitter: { card: "summary_large_image", title, description } };
+  // The default opengraph-image route cannot see the query string, so a close link names its own image route. That route
+  // verifies the close on chain and falls back to the normal card for a hash it cannot confirm.
+  const img = close && id && isAddress(address) ? [`/c/${id}/taker/${getAddress(address)}/image?close=${close}`] : undefined;
+  return { title, description, openGraph: { title, description, ...(img ? { images: img } : {}) }, twitter: { card: "summary_large_image", title, description, ...(img ? { images: img } : {}) } };
 }
 
-export default async function TakerPage({ params }: Params) {
+export default async function TakerPage({ params, searchParams }: Params) {
   const { id: raw, address } = await params;
+  const close = closeOf((await searchParams).close);
   const id = parseCallId(raw);
   if (!id || !isAddress(address)) {
     return (
@@ -41,7 +49,7 @@ export default async function TakerPage({ params }: Params) {
       </div>
     );
   }
-  const model = await load(id, getAddress(address));
+  const model = await load(id, getAddress(address), close);
   if (!model) {
     return (
       <div className="wrap">
@@ -66,7 +74,11 @@ export default async function TakerPage({ params }: Params) {
           </Link>
           <ShareLauncher label="Share this card" title="Share this card" model={model} />
         </div>
-        <p className="hint" style={{ marginTop: 12 }}>The call move is the price move of the call itself. The bond payout is what the caller&apos;s bond paid the takers. Neither is anyone&apos;s trade profit.</p>
+        <p className="hint" style={{ marginTop: 12 }}>
+          {model.stamp === "CLOSED"
+            ? "Entry, exit and realized P&L are read from this taker's close transaction on chain. Fees are charged on top."
+            : "The call move is the price move of the call itself. The bond payout is what the caller's bond paid the takers. Neither is anyone's trade profit."}
+        </p>
       </div>
     </div>
   );

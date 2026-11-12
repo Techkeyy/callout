@@ -304,6 +304,7 @@ const NOTHING: Record<string, string> = {
   deposit: "No margin was added.",
   approve: "The caller was not approved.",
   voucher: "Nothing was claimed.",
+  withdraw: "Nothing was withdrawn.",
 };
 
 /** A short, readable reason from a raw error, for the "Details" line when we cannot name it. */
