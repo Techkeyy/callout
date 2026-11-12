@@ -1,6 +1,6 @@
 # CallBook v4 / v4.1: pre-deploy security pass
 
-Run with the critical-bug-hunter skill (phases 3, 7, 8, 10, 15, 16) on the v4 contract diff, before deployment. 58 forge tests back the findings.
+Run with the critical-bug-hunter skill (phases 3, 7, 8, 10, 15, 16) on the v4 contract diff, before deployment. 60 forge tests back the findings.
 
 ## State machine
 

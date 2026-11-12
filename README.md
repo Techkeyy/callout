@@ -1,10 +1,10 @@
 # Callout
 
-[![ci](https://github.com/Techkeyy/callout/actions/workflows/ci.yml/badge.svg)](https://github.com/Techkeyy/callout/actions/workflows/ci.yml)
-
 **Post a perps call. Put a bond behind it. Get paid when people take it. Be wrong and your takers get paid.**
 
-**[Live app](https://callout-perps.vercel.app)** · **[Open calls](https://callout-perps.vercel.app/app?tab=explore)** · **[Leaderboard](https://callout-perps.vercel.app/board)** · **[CallBook v4.1 contract](https://explorer.testnet.somnia.network/tokyo/address/0xc83b954b22003dbe498c47b2330699466c79661d)** · [Mechanism spec](docs/v4-mechanism.md) · [Security pass](docs/v4-audit.md) · [Feedback reports](feedback/)
+[![ci](https://github.com/Techkeyy/callout/actions/workflows/ci.yml/badge.svg)](https://github.com/Techkeyy/callout/actions/workflows/ci.yml)
+
+**[Live app](https://callout-perps.vercel.app)** · **[Open calls](https://callout-perps.vercel.app/app?tab=explore)** · **[Leaderboard](https://callout-perps.vercel.app/board)** · **[CallBook v4.1 on the explorer](https://explorer.testnet.somnia.network/tokyo/address/0xc83b954b22003dbe498c47b2330699466c79661d)** · [Mechanism spec](docs/v4-mechanism.md) · [Security pass](docs/v4-audit.md) · [Feedback reports](feedback/)
 <!-- Demo video link -->
 
 Callout turns a trade call into a shareable card that a follower can take on dreamDEX perps in a few clicks, with the call's stop and target already armed. It is for traders who post calls on X (callers) and the people who follow them (followers).
@@ -13,11 +13,22 @@ The caller posts the call on chain, where it can never be edited, and backs it w
 
 > *"I called it, you copied it, and I got nothing. Then you said I never called it."*
 
-Built solo by Techkeyy for the dreamDEX Perps Builder Bounty, MVP track. Somnia Tokyo testnet only, paper USDso.
+Built solo by Techkeyy for the dreamDEX Perps Builder Bounty, MVP track. Somnia Tokyo testnet (chain 50383) only, paper USDso. Every follower take is a real perps order on dreamDEX, and every outcome in the proof table is a real transaction you can open.
+
+**The core loop:** a caller posts a bonded call and shares its card, a follower takes it, the chain counts the take with Somnia Reactivity, anyone resolves it against the price, and the bond pays the caller or the takers. The result goes on the caller's public record.
+
+## Try it in 2 minutes
+
+1. Open [callout-perps.vercel.app](https://callout-perps.vercel.app) with a browser wallet on Somnia Tokyo testnet, and get a little STT from the [faucet](https://explorer.testnet.somnia.network/tokyo/faucet).
+2. Open a finished call, for example [call #2](https://callout-perps.vercel.app/c/2) (a follower took it, it was stopped, and the follower claimed the bond). Look at the take count, the outcome and the caller's record.
+3. Go to [Explore](https://callout-perps.vercel.app/app?tab=explore), open a live call and press **Take**. The app walks you through gas, practice USDso, margin and a one-time approval of the caller, then places the order with the call's stop and target armed. The liquidation price is shown before you confirm.
+4. Or go to [Post a call](https://callout-perps.vercel.app/app), pick a market, set the stop, target and duration, post it and share the card.
+
+Every card has its own share image, for example [call #2](https://callout-perps.vercel.app/c/2/opengraph-image) and the [landing page](https://callout-perps.vercel.app/opengraph-image).
 
 ## Why this exists
 
-Callers post calls for free and can't prove what they said before the move. Followers copy by hand, late, usually without a stop. Other projects in this bounty copy traders automatically. Callout works per call and is opt-in: you take one call, with its exits, and the caller is paid by the protocol's builder-fee rail, not by you.
+Callers post calls for free and can't prove what they said before the move. Followers copy by hand, late, usually without a stop. Copy-trading tools mirror a trader automatically. Callout works per call and is opt-in: you take one call, with its exits, and the caller is paid by the protocol's builder-fee rail, not by you.
 
 dreamDEX pays builder fees at fill time, so no contract can hold them back. The bond makes the net result conditional instead. That is the whole design: **the money and the leaderboard judge every outcome the same way.**
 
@@ -27,7 +38,7 @@ It took three rounds to get there, and the history is the point:
 |---|---|---|
 | v2 | Paid callers for reach. More takers meant more fees, right or wrong. | outside review |
 | v3 | Added a bond, but only a stop cost the caller. An expired call returned the full bond, so the cheapest strategy was a wide stop and a far target: never stopped, never hit, fees kept. The bond was a flat 5 USDso whatever the audience. The contract checked expiry before price. | outside review |
-| v3 | Never checked the entry against the market, so a caller could post a target the price had already passed and record an instant HIT. `pool` could be any address, including a fake contract that reports any price. | our own stress test |
+| v3 | Never checked the entry against the market, so a caller could post a target the price had already passed and record an instant HIT. `pool` could be any address, including a fake contract that reports any price. | my own stress test |
 | **v4 / v4.1 (live)** | Every outcome settles at the price, the stop is capped, the bond scales with capacity, the market must be registered on dreamDEX, and price is checked before time. Spec and payoff table: [docs/v4-mechanism.md](docs/v4-mechanism.md). | |
 
 ```
@@ -59,7 +70,7 @@ It took three rounds to get there, and the history is the point:
    - the entry is within 0.5% of the price;
    - the stop is between 0.1% and 10% from entry;
    - the target is at least as far as the stop.
-2. **Shares** it. After posting, a "Your call is live" panel offers **Share on X** with a pre-written post, Copy link and Open card. Every card has its own share image: the ticket with its stamp.
+2. **Shares** it. After posting, a "Your call is live" panel opens a share sheet: X, Telegram, WhatsApp, Farcaster, copy link, download the image, or the device's native share. There are four share cards, each with its own link preview: the call and its result, a taker's card with their live P&L while the position is open, a closed trade (its numbers are read from the close transaction on chain, `?close=<tx>`), and a caller's record.
 3. **Lists** it in **Explore**, a feed of open calls anyone can take, soonest expiry first.
 4. **Takes** it for a follower: gas, practice USDso and margin if needed, a one-time approval of the caller, then the fill with the call's stop and target armed. The take is capped at what the bond still covers.
 5. **Tags** each follower order with `userData = (0xCA11 << 48) | callId` through the raw PerpPool `placeOrder`, so the fill names the caller as builder.
@@ -69,11 +80,12 @@ It took three rounds to get there, and the history is the point:
    - past the target is HIT;
    - after expiry, anything else is EXPIRED and settled at the price.
 
-   A keeper runs every 30 seconds on our server from its own gas-only wallet, and anyone can press "Record on chain". `claim` also settles a call first if nobody has.
+   A keeper on my VPS checks about every 30 seconds from its own gas-only wallet, and anyone can press "Record on chain". `claim` also settles a call first if nobody has. If a call has ended but the follower's position is still open, the card says so.
 8. **Settles the bond.** HIT returns it to the caller. STOPPED splits it among the takers by covered size. EXPIRED gives the takers `bond × (how far the price moved against the call ÷ the stop distance)` and the caller the rest. With no covered takers, the caller gets the bond back.
 9. **Records** the outcome. Hit rate is `hits / (hits + stops + expired losses)`, shown on every card, every profile and the [leaderboard](https://callout-perps.vercel.app/board).
-10. **Pays** the caller the builder fee into their MarginBank balance, withdrawn from their page. Followers see every call they took, with what they can claim, on their own page.
+10. **Pays** the caller the builder fee into their MarginBank balance, withdrawn from their page. Followers see every call they took, with what they can claim, on their own page. After a take is closed, the card shows the realized P&L, exit and fees read from the close receipt, and the follower can withdraw to their wallet. The wallet menu shows balances and disconnects.
 11. **Charts** each market: a price chart on every card and in the composer, with entry, stop and target drawn on the candles.
+12. **Reads time from the chain.** Somnia testnet's block time has drifted hours away from wall-clock time, and the contract compares expiries with `block.timestamp`. The app and the keeper therefore use chain time for expiries, countdowns and open or expired labels. The composer accepts any duration from 5 minutes to the contract's 30-day maximum.
 
 The take sizes margin so the liquidation price sits beyond the call's stop: margin is at least notional x (stop distance + maintenance margin + 2%). The liquidation price is shown before you confirm.
 
@@ -141,13 +153,11 @@ Each row is a forge test, and most are also checked on chain.
 | Margin would liquidate before the stop | Margin is sized past the stop distance, the liquidation price is shown, and the take is blocked if the stop wouldn't fire first |
 | Caller tries to change a posted call | No edit function exists, and a test checks terms stay identical |
 
-Tests: `forge test` runs 60, `vitest` runs 121, and [CI](https://github.com/Techkeyy/callout/actions/workflows/ci.yml) runs both on every push, so nobody needs Foundry installed to check them. The full payoff table and every dodge are in [docs/v4-mechanism.md](docs/v4-mechanism.md), and the pre-deploy security pass is in [docs/v4-audit.md](docs/v4-audit.md).
+Tests: `forge test` runs 60, `vitest` runs 176, `tsc --noEmit` is clean, and [CI](https://github.com/Techkeyy/callout/actions/workflows/ci.yml) runs both on every push, so nobody needs Foundry installed to check them. The full payoff table and every dodge are in [docs/v4-mechanism.md](docs/v4-mechanism.md), and the pre-deploy security pass is in [docs/v4-audit.md](docs/v4-audit.md).
 
-## Quickstart
+## Run it locally
 
-Easiest is the live app: https://callout-perps.vercel.app. You need a browser wallet on Somnia Tokyo testnet and a little STT from the [faucet](https://explorer.testnet.somnia.network/tokyo/faucet).
-
-To run it locally:
+You need Node 24 (the CI version). Foundry is only needed for the contract tests.
 
 ```bash
 git clone https://github.com/Techkeyy/callout
@@ -162,14 +172,24 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Run the tests:
+Run the tests. CI runs the same on every push, so nobody needs Foundry installed to see them pass.
 
 ```bash
-cd contracts && forge test
-cd ../web && npx vitest run
+cd contracts
+git clone --depth 1 --branch v1.17.0 https://github.com/foundry-rs/forge-std lib/forge-std   # once, not vendored
+forge test                                          # 60 tests
+cd ../web && npx vitest run && npx tsc --noEmit     # 176 tests, then types
 ```
 
-The full loop on chain (post, take, settle, claim) runs from `web/scripts/take-e2e.ts`. It needs funded testnet keys in `spike/.env`, which is never committed.
+Run your own keeper (a gas-only wallet in `KEEPER_KEY`, or a key in the gitignored `spike/.env`):
+
+```bash
+cd web
+node --experimental-strip-types scripts/keeper.ts --dry     # look, send nothing
+node --experimental-strip-types scripts/keeper.ts --watch    # resolve as levels are crossed
+```
+
+The full loop on chain (post, take, settle, claim) runs from `web/scripts/take-e2e.ts`. It needs funded testnet keys in `spike/.env`, which is never committed. `web/scripts/probe-*.ts` are read-only diagnostics that simulate a take or a close and decode the revert.
 
 ## Architecture
 
@@ -182,22 +202,28 @@ The full loop on chain (post, take, settle, claim) runs from `web/scripts/take-e
 | `web/src/lib/dex.ts` | dreamDEX perp calls: deposit, approve, tagged `placeOrder`, stop and target, close |
 | `web/src/lib/feed.ts`, `board.ts` | The Explore feed and the leaderboard from on-chain records |
 | `web/src/components/Composer.tsx` | Write, check and post a call, then share it |
-| `web/src/components/TakePanel.tsx` | The follower flow on a card |
+| `web/src/components/TakePanel.tsx` | The follower flow on a card, including the closed-trade result |
 | `web/src/components/PriceChart.tsx` | Candles from dreamDEX with the call's levels |
-| `web/src/app/c/[id]` | Call card page and its share image |
-| `web/scripts/keeper.ts` | Resolves calls when a level is crossed or a call expires. Runs every 30 seconds on our server, and anyone can run their own copy |
+| `web/src/lib/chainclock.ts`, `chaintime.ts` | Chain time instead of device time for expiries and countdowns |
+| `web/src/lib/fills.ts` | Realized P&L, exit and fees of a closed trade, read from the close receipt |
+| `web/src/lib/share.ts`, `cardmodel.ts` | Share links and the data behind the four share cards |
+| `web/src/components/ShareSheet.tsx` | The share sheet: X, Telegram, WhatsApp, Farcaster, copy, image, native share |
+| `web/src/components/ExploreFeed.tsx` | The open-calls feed, soonest expiry first |
+| `web/src/components/landing/` | The landing page |
+| `web/src/app/c/[id]`, `u/[address]` | Call card and profile pages, with their share images |
+| `web/scripts/keeper.ts` | Resolves calls when a level is crossed or a call expires. Runs on my VPS about every 30 seconds, and anyone can run their own copy |
 
-Stack: Next.js 16, viem, `@somnia-chain/markets-sdk` 0.33, lightweight-charts, Solidity 0.8.30 with Foundry, Somnia Reactivity, Vercel.
+Stack: Next.js 16, viem, `@somnia-chain/markets-sdk` 0.33, lightweight-charts, Solidity 0.8.30 with Foundry, Somnia Reactivity, Vercel, GitHub Actions CI.
 
 ## Limits
 
 - Testnet only, paper USDso. No real funds, and no real audience yet.
-- **A brief touch between checks is missed before expiry.** If the price crosses a level and comes back before anyone resolves, it is not recorded. The keeper checks every 30 seconds, and anyone can press "Record on chain".
-- **The keeper is a convenience, not a trust assumption.** It only decides how fast an outcome is recorded, never what the outcome is: the contract checks the price itself. If our keeper stops, any taker or caller can resolve from the card, `claim` settles first, and anyone can run `web/scripts/keeper.ts` with their own gas wallet.
+- **A brief touch between checks is missed before expiry.** If the price crosses a level and comes back before anyone resolves, it is not recorded. The keeper checks about every 30 seconds, and anyone can press "Record on chain".
+- **The keeper is a convenience, not a trust assumption.** It only decides how fast an outcome is recorded, never what the outcome is: the contract checks the price itself. If my keeper stops, any taker or caller can resolve from the card, `claim` settles first, and anyone can run `web/scripts/keeper.ts` with their own gas wallet.
 - **The expiry callback did not fire on testnet.** Each call asks Somnia Reactivity to call the contract back at its expiry. In controlled tests with the keeper paused, the callback did not land, even after v4.1 matched Somnia's example settings. Settlement does not depend on it: the keeper settles expired calls within about 30 seconds, and `claim` settles first.
 - dreamDEX pays the builder fee at fill time. On fills placed outside the app beyond a call's capacity, the caller still earns the fee without bond cover. The app blocks those takes.
 - One open call per caller per market (see above for why).
-- **One steward key exists.** An immutable address can withdraw the contract's native STT reserve (Somnia requires 32 STT for subscriptions), so an upgrade doesn't strand it. It used that power once, to move the reserve to v4.1. It cannot touch bonds, calls or outcomes.
+- **One steward key exists.** An immutable address can withdraw the contract's native STT reserve (Somnia requires 32 STT for subscriptions), so an upgrade doesn't strand it. It was used once, to move the reserve to v4.1. It cannot touch bonds, calls or outcomes.
 
 ## X posts
 

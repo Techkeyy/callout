@@ -10,9 +10,9 @@ v3 made callers post a bond. An outside review found that the bond only punished
 | `resolve` checked the clock before the price, so a stopped call resolved late counted as expired. | outside review | Price is always read first. At expiry, past the stop is STOPPED and past the target is HIT. |
 | A flat 5 USDso bond against fees that grow with followers. | outside review | The caller declares a follower capacity (notional), and the bond must be at least 2% of it. Takes past the capacity are not covered. |
 | No reentrancy guard on `claim`. | outside review | `nonReentrant` on every state-changing entry point. Transfers were already checked for success. |
-| The entry was never checked against the market, so a caller could post a target the price had already passed and record an instant HIT. | our stress test | At post, the mark must sit strictly between the stop and the target, and the entry must be within 0.5% of the mark. |
-| `pool` could be any address, including a fake contract that reports any price, so hits could be farmed off-market. | our stress test | The pool must be registered on dreamDEX's MarginBank (`isPerpPoolRegistered`). |
-| A late resolve after expiry read the price whenever someone got around to it. | our stress test | Every call asks Somnia Reactivity for a callback at its own expiry. On testnet that callback was not observed to fire, so a keeper resolves expired calls within about 30 seconds, `claim` settles first, and anyone can resolve. |
+| The entry was never checked against the market, so a caller could post a target the price had already passed and record an instant HIT. | my stress test | At post, the mark must sit strictly between the stop and the target, and the entry must be within 0.5% of the mark. |
+| `pool` could be any address, including a fake contract that reports any price, so hits could be farmed off-market. | my stress test | The pool must be registered on dreamDEX's MarginBank (`isPerpPoolRegistered`). |
+| A late resolve after expiry read the price whenever someone got around to it. | my stress test | Every call asks Somnia Reactivity for a callback at its own expiry. On testnet that callback was not observed to fire, so a keeper resolves expired calls within about 30 seconds, `claim` settles first, and anyone can resolve. |
 
 ## Rules at post
 

@@ -138,7 +138,7 @@ export default function Landing() {
           </h2>
           <LiveProof />
           <p className="proof-addr" data-reveal>
-            <span className="hint">Contract, CallBook v4</span>
+            <span className="hint">Contract, CallBook v4.1</span>
             {addr ? (
               <a className="num" href={addressUrl(addr)} target="_blank" rel="noopener noreferrer">
                 {addr}

@@ -1,4 +1,4 @@
-// The post rules of CallBook v4, mirrored so the composer can say "no" before the wallet is asked.
+// The post rules of CallBook v4.1, mirrored so the composer can say "no" before the wallet is asked.
 // The contract is the authority: contracts/src/CallBook.sol (post, _checkLevels). Spec: docs/v4-mechanism.md.
 // Pure, no imports.
 

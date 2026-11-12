@@ -1,9 +1,9 @@
-// Keeper: records outcomes on CallBook v4 for calls whose level was crossed or that have expired.
+// Keeper: records outcomes on CallBook v4.1 for calls whose level was crossed or that have expired.
 // Same order as the contract (src/lib/outcome.ts deriveOutcome): price first, then the clock. It only ever calls resolve().
 // Run once:   node --experimental-strip-types scripts/keeper.ts
-// Run forever: node --experimental-strip-types scripts/keeper.ts --watch      (polls every 20s)
+// Run forever: node --experimental-strip-types scripts/keeper.ts --watch      (polls every 20s; the hosted keeper runs it about every 30s)
 // Only look:   node --experimental-strip-types scripts/keeper.ts --dry
-// The key is read at runtime from the KEEPER_KEY env var (used by the scheduled GitHub Action), else from ../spike/.env
+// The key is read at runtime from the KEEPER_KEY env var, else from ../spike/.env
 // (CALLER_KEY by default, --key=NAME for another). It is never printed.
 import fs from "node:fs";
 import { createPublicClient, createWalletClient, http } from "viem";
