@@ -48,6 +48,8 @@ interface Props {
   onChanged: () => void;
   /** Called once after a take went through, so the page can offer to share it. */
   onTaken?: () => void;
+  /** The wallet's live position on this market (null when flat or unknown), for the taker share card. */
+  onPosition?: (p: { avgEntry: bigint; pnl: bigint; pct: number } | null) => void;
 }
 
 const PRESETS = [25, 50, 100];
@@ -72,7 +74,7 @@ const DONE: Record<string, string> = {
   close: "Position closed.",
 };
 
-export default function TakePanel({ callId, caller, isLong, entry, stop, target, status, market, remaining, onChanged, onTaken }: Props) {
+export default function TakePanel({ callId, caller, isLong, entry, stop, target, status, market, remaining, onChanged, onTaken, onPosition }: Props) {
   const w = useWallet();
   const [rd, setRd] = useState<dex.Readiness | null>(null);
   const [pos, setPos] = useState<dex.PositionRead | null>(null);
@@ -321,6 +323,20 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
       /* clipboard blocked */
     }
   }
+
+  // Report the live position (same numbers as the "You're in" panel) so the share card matches the app.
+  const posKey = pos && market ? `${pos.size}:${pos.avgEntryPrice}:${market.markPrice}` : "none";
+  useEffect(() => {
+    if (!onPosition) return;
+    if (pos && pos.size !== 0n && market) {
+      onPosition({
+        avgEntry: pos.avgEntryPrice,
+        pnl: unrealizedPnl(pos.size, pos.avgEntryPrice, market.markPrice, market.baseDecimals),
+        pct: pnlPercent(pos.size, pos.avgEntryPrice, market.markPrice),
+      });
+    } else onPosition(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posKey]);
 
   // ---------- render ----------
   const sym = market ? market.name.split("-")[0] : "";

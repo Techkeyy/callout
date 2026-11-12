@@ -56,6 +56,7 @@ export default function CallLive(p: Props) {
   const w = useWallet();
   const toast = useToast();
   const [justTook, setJustTook] = useState(false);
+  const [myPos, setMyPos] = useState<{ avgEntry: bigint; pnl: bigint; pct: number } | null>(null);
   const [sheet, setSheet] = useState<"call" | "taker" | null>(null);
   const autoOpened = useRef(false);
   const { markets, stale } = useMarkets(4000, p.pool);
@@ -176,6 +177,7 @@ export default function CallLive(p: Props) {
         totalCovered: covered,
         claimable,
         mark: !resolved && live && live.markOk ? live.markPrice : null,
+        position: !resolved ? myPos : null,
       }
     : null;
   const takerModel = takerInput ? takerCardModel(takerInput) : null;
@@ -281,6 +283,7 @@ export default function CallLive(p: Props) {
           remaining={remaining}
           onChanged={refreshTakes}
           onTaken={() => setJustTook(true)}
+          onPosition={setMyPos}
         />
         <div className="panel share-prompt">
           <h2>{shareHead}</h2>

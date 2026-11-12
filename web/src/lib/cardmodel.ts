@@ -151,6 +151,8 @@ export interface TakerCardInput extends Omit<CallCardInput, "record"> {
   claimable: bigint | null;
   /** The mark while the call is open, or null. */
   mark: bigint | null;
+  /** The taker's live position, when they still hold it: their own entry and unrealized P&L (signed, 18-decimal USDso). */
+  position?: { avgEntry: bigint; pnl: bigint; pct: number } | null;
 }
 
 /** The bond payout a taker got (or can claim), or null when there is none. */
@@ -162,14 +164,18 @@ export function takerPayoutOf(i: Pick<TakerCardInput, "outcome" | "result" | "co
   return p !== null && p > 0n ? p : null;
 }
 
-/** The taker card. Numbers are labelled for what they are: the call's move and the bond payout, never personal PnL. */
+/**
+ * The taker card. While the taker still holds the position it leads with their real P&L (the same
+ * number the app shows), with the call's move as the second line. Once closed or settled it shows the
+ * call's move and the bond payout. Every number is labelled for what it is.
+ */
 export function takerCardModel(i: TakerCardInput): CardModel {
   const id = i.id.toString();
   const f = (v: bigint) => formatDisplay(v, i.dp);
   const resolved = i.outcome !== "open" && !!i.result;
   const to = resolved ? i.result!.price : i.mark;
   const move = to ? movePct(i.isLong, i.entry, to) : null;
-  const big = moveStat(resolved ? "Call move" : "Call move so far", move);
+  let big: (Stat & { note?: string | null }) | null = moveStat(resolved ? "Call move" : "Call move so far", move);
   const forfeit = resolved ? i.result!.forfeit : 0n;
   const payout = takerPayoutOf(i);
   const stamp = resolved ? OUTCOME_LABEL[i.outcome] : "TAKEN";
@@ -181,6 +187,14 @@ export function takerCardModel(i: TakerCardInput): CardModel {
     i.covered !== null && i.covered > 0n ? usdStat("My covered size", i.covered) : { k: "My covered size", v: "-" },
   ];
   const callerShort = shortAddress(i.caller);
+  const live = !resolved && i.position ? i.position : null;
+  if (live) {
+    const pnlAbs = live.pnl < 0n ? -live.pnl : live.pnl;
+    const pnlTone: Tone = live.pnl > 0n ? "long" : live.pnl < 0n ? "short" : "ink";
+    const mine = moveStat("My P&L, live", live.pct);
+    big = mine && { ...mine, note: move === null ? "Call still open." : `Call move ${fmtMove(move)} so far.` };
+    cells.splice(0, cells.length, { k: "My entry", v: f(live.avgEntry) }, i.mark ? { k: "Mark", v: f(i.mark) } : { k: "Target", v: f(i.target), tone: "long" }, { k: "My P&L", v: `${live.pnl > 0n ? "+" : live.pnl < 0n ? "-" : ""}$${formatDisplay(pnlAbs, 2)}`, tone: pnlTone });
+  }
   return {
     kind: "taker",
     stamp,
@@ -189,11 +203,13 @@ export function takerCardModel(i: TakerCardInput): CardModel {
     headline: `I took ${callerShort}'s call`,
     sub: `${i.isLong ? "LONG" : "SHORT"} ${i.market}`,
     subTone: i.isLong ? "long" : "short",
-    big: big && { ...big, note },
+    big: big && (live ? big : { ...big, note }),
     cells,
     footL: { k: "Taker", v: shortAddress(i.taker) },
     footR: payout ? { k: "Bond payout", v: `${usd(payout)} USDso` } : { k: "Caller", v: callerShort },
-    text: takerShareText({ caller: callerShort, move: move === null ? null : fmtMove(move), open: !resolved, payout: payout ? usd(payout) : null }),
+    text: live
+      ? `took ${callerShort}'s call on callout. i'm ${fmtMove(live.pct)} on it so far, stop and target armed.`
+      : takerShareText({ caller: callerShort, move: move === null ? null : fmtMove(move), open: !resolved, payout: payout ? usd(payout) : null }),
     path: `/c/${id}/taker/${i.taker}`,
     imagePath: `/c/${id}/taker/${i.taker}/opengraph-image`,
     fileId: `${id}-${i.taker.slice(2, 8).toLowerCase()}`,

@@ -6,7 +6,10 @@ import { mapLimit, readCall, readCallsOf, readClaimable, readCovered, readHasTak
 import { getMarketMeta } from "./markets";
 import { rankBoard } from "./outcome";
 import { displayDecimals } from "./prices";
-import { withTimeout } from "./take";
+import { pnlPercent, unrealizedPnl, withTimeout } from "./take";
+import { makeMarkets } from "./dex";
+
+let fx: ReturnType<typeof makeMarkets> | null = null;
 
 const FAST = { retries: 0, timeoutMs: 4500 };
 
@@ -56,6 +59,17 @@ export async function loadTakerModel(id: bigint, taker: `0x${string}`): Promise<
   if (took === false || (covered !== null && covered <= 0n && took !== true)) return loadCallModel(id);
   const resolved = b.res && b.res.outcome !== "open";
   const mark = !resolved && b.m && /^\d+$/.test(b.m.markPrice) && BigInt(b.m.markPrice) > 0n ? BigInt(b.m.markPrice) : null;
+  // While the call is open, read the taker's live position so the image shows the same P&L as the app.
+  let position: { avgEntry: bigint; pnl: bigint; pct: number } | null = null;
+  if (!resolved && mark && b.m) {
+    try {
+      fx ??= makeMarkets();
+      const p = await withTimeout(fx.client.getPerpPosition({ marginBank: String(b.m.marginBank).toLowerCase() as `0x${string}`, account: taker, pool: b.call.pool }), 4000);
+      if (p.size !== 0n) position = { avgEntry: p.avgEntryPrice, pnl: unrealizedPnl(p.size, p.avgEntryPrice, mark, Number(b.m.baseDecimals)), pct: pnlPercent(p.size, p.avgEntryPrice, mark) };
+    } catch {
+      /* no live position read: the card falls back to the call's move */
+    }
+  }
   return takerCardModel({
     id,
     market: b.m?.name ?? "PERP",
@@ -74,6 +88,7 @@ export async function loadTakerModel(id: bigint, taker: `0x${string}`): Promise<
     totalCovered: b.takes?.covered ?? null,
     claimable,
     mark,
+    position,
   });
 }
 

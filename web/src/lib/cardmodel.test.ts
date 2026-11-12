@@ -69,6 +69,17 @@ describe("taker card", () => {
     expect(m.text).toContain("so far");
     expect(m.path).toBe("/c/2/taker/0x5Eb1893EE7522309FC2f9b73588c245B03d345FF");
   });
+  it("open with a live position: leads with the taker's own P&L, the call's move second (UAT: card and app disagreed)", () => {
+    // The call is up 1%, but this taker entered worse and is down 0.17%: the card must say what the app says.
+    const m = takerCardModel({ ...taker, mark: 74_740n * E18, position: { avgEntry: 74_867n * E18, pnl: -(16n * E18) / 100n, pct: -0.17 } });
+    expect(m.big?.k).toBe("My P&L, live");
+    expect(m.big?.v).toBe("-0.17%");
+    expect(m.big?.tone).toBe("short");
+    expect(m.big?.note).toBe("Call move +1.0% so far.");
+    expect(m.cells.map((c) => c.k)).toEqual(["My entry", "Mark", "My P&L"]);
+    expect(m.cells[2].v).toBe("-$0.16");
+    expect(m.text).toContain("-0.17%");
+  });
   it("open without a mark has no move, never a made up one", () => {
     expect(takerCardModel(taker).big).toBeNull();
   });
