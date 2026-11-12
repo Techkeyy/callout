@@ -191,6 +191,22 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
     hasPosition,
   });
 
+  // Never send the user back a step without saying why. If the margin step comes back after it
+  // was done (the price moved, or the market's margin rates loaded), explain how much is missing.
+  const prevStep = useRef<Step | null>(null);
+  const [regressNote, setRegressNote] = useState<string | null>(null);
+  useEffect(() => {
+    const p = prevStep.current;
+    if (step === "margin" && (p === "approve" || p === "take")) {
+      const short = marginNeeded > (rd?.margin ?? 0n) ? marginNeeded - (rd?.margin ?? 0n) : 0n;
+      setRegressNote("The price moved, so this size needs about $" + formatDisplay(short, 2) + " more margin. Add it below, or pick a smaller size.");
+    } else if (step !== "margin") {
+      setRegressNote(null);
+    }
+    prevStep.current = step;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
   // Once the margin is in, ask the chain where this size would be liquidated. Hidden if the preview is unavailable.
   const markForLiq = market?.markPrice ?? 0n;
   useEffect(() => {
@@ -242,7 +258,7 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
   const doDeposit = () =>
     run("deposit", async (c) => {
       const need = marginNeeded > (rd?.margin ?? 0n) ? marginNeeded - (rd?.margin ?? 0n) : 0n;
-      const amount = need + need / 10n + 1n; // a little headroom for price moves
+      const amount = need + need / 4n + 1n; // 25% headroom, so normal price moves don't undo this step
       await dex.depositMargin(c, amount > (rd?.walletUsdso ?? 0n) ? (rd?.walletUsdso ?? 0n) : amount);
       setMsg({ tone: "ok", text: "Margin added." });
     });
@@ -427,6 +443,11 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
             </>
           )}
 
+          {rd && step === "margin" && regressNote && (
+            <p className="notice is-warn" role="status">
+              {regressNote}
+            </p>
+          )}
           {rd && step === "margin" && (
             <>
               <p className="notice is-warn">

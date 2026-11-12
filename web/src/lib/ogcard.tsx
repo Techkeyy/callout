@@ -35,7 +35,7 @@ function Card({ m, ui, mono, art }: { m: CardModel; ui: string; mono: string; ar
   const hl = m.headline.length;
   const hSize = m.kind === "call" ? (hl <= 10 ? 104 : 84) : hl <= 14 ? 84 : hl <= 20 ? 70 : 58;
   const hasBig = !!m.big;
-  const cellSize = m.cells.length >= 5 ? 34 : hasBig ? 40 : 56;
+  const cellSize = m.cells.length >= 5 ? 32 : hasBig ? 38 : 46;
   const cellLabel = m.cells.length >= 5 ? 20 : 24;
   const stampColor = color(m.tone);
   const hasMain = m.cells.length > 0 || hasBig;

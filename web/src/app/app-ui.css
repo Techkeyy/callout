@@ -571,15 +571,18 @@
   margin-bottom: calc(var(--u) * 22);
   padding-top: calc(var(--u) * 16);
   border-top: calc(var(--u) * 3) dashed var(--ink);
-  display: flex;
-  justify-content: space-between;
-  gap: calc(var(--u) * 12);
+  /* Equal columns that never overlap: each value gets its own track and is clipped, not spilled. */
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: calc(var(--u) * 24);
 }
 .sc-cell {
   display: flex;
   flex-direction: column;
   gap: calc(var(--u) * 2);
   min-width: 0;
+  overflow: hidden;
 }
 .sc-ck {
   font-size: calc(var(--u) * 24);
@@ -588,15 +591,18 @@
   white-space: nowrap;
 }
 .sc-cv {
-  font-size: calc(var(--u) * 56);
+  font-size: calc(var(--u) * 44);
   font-weight: 700;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.02em;
 }
 .sc-cells.has-big .sc-cv {
-  font-size: calc(var(--u) * 40);
+  font-size: calc(var(--u) * 38);
 }
 .sc-cells.is-dense .sc-cv {
-  font-size: calc(var(--u) * 34);
+  font-size: calc(var(--u) * 30);
 }
 .sc-cells.is-dense .sc-ck {
   font-size: calc(var(--u) * 20);

@@ -56,7 +56,8 @@ export default function Ticket({ id, market, isLong, entry, stop, target, dp, no
       <article className="ticket" aria-label={`${isLong ? "Long" : "Short"} call on ${market}${outcome ? `, ${OUTCOME_LABEL[outcome].toLowerCase()}` : ""}`}>
         <div className="ticket-head">
           <span>{preview ? "Preview" : id !== undefined ? `Call #${id.toString()}` : "Call"}</span>
-          {status && !resolved && <span className={`status is-${status}`}>{status === "open" ? "Open" : status === "expired" ? "Expired" : "Closed"}</span>}
+          {/* The stamp already says OPEN; the pill only adds news: closed by the caller, or expired and not yet settled. */}
+          {status && !resolved && status !== "open" && <span className={`status is-${status}`}>{status === "expired" ? "Expired" : "Closed"}</span>}
         </div>
         <div className="ticket-body">
           <span className={`stamp ${stampClass}`}>{stampText}</span>
