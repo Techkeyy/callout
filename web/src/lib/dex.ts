@@ -4,7 +4,7 @@ import { SomniaMarkets, SOMNIA_HIDEKI_TESTNET_ADDRESSES, perpPoolWriteAbi } from
 import type { PublicClient, WalletClient } from "viem";
 import { callBookAbi } from "./callbook.abi.ts";
 import { INDEXER_URL, WS_URL, somniaTokyo } from "./chain.ts";
-import { voucherUsable, cardTag, crossingPrice, FEE_BPS_TIMES_1K, IOC, U64_MAX, ZERO_ADDRESS } from "./take.ts";
+import { voucherUsable, cardTag, crossingPrice, FEE_BPS_TIMES_1K, IOC, U64_MAX, ZERO_ADDRESS, withRetry } from "./take.ts";
 
 export const OPERATOR_REGISTRY = "0x6B2FbfeD328FF5F20C0BE7D3C3437613aFFE8D3a" as const;
 export const STT_FAUCET_URL = "https://explorer.testnet.somnia.network/tokyo/faucet";
@@ -257,8 +257,9 @@ export async function cancelBracket(c: Ctx, legs: BracketLeg[]) {
 }
 
 /** Close the whole position: an opposite-side IOC for the full size, with no builder so it is not counted as a take. */
-export async function closePosition(c: Ctx) {
-  const pos = await readPosition(c);
+export async function closePosition(c: Ctx, known?: PositionRead | null) {
+  // The live websocket read can be slow on testnet; use the position already on screen when we have it.
+  const pos = known && known.size !== 0n ? known : await withRetry(() => readPosition(c), 3, 800);
   if (pos.size === 0n) throw new Error("There is no open position to close.");
   const isLong = pos.size > 0n;
   const qty = pos.size > 0n ? pos.size : -pos.size;

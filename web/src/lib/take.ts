@@ -297,7 +297,23 @@ export function marginPlan(i: { walletUsdso: bigint; shortfall: bigint; voucherE
 
 export type TakeError = { kind: "rejected" } | { kind: "error"; message: string };
 
-export function describeTakeError(err: unknown): TakeError {
+const NOTHING: Record<string, string> = {
+  take: "Nothing was taken.",
+  close: "Nothing was closed.",
+  arm: "Your stop and target were not set.",
+  deposit: "No margin was added.",
+  approve: "The caller was not approved.",
+  voucher: "Nothing was claimed.",
+};
+
+/** A short, readable reason from a raw error, for the "Details" line when we cannot name it. */
+export function errorDetail(err: unknown): string {
+  const e = err as { shortMessage?: string; message?: string; details?: string };
+  const raw = (e?.shortMessage || e?.details || e?.message || String(err)).split("\n")[0].trim();
+  return raw.length > 140 ? `${raw.slice(0, 137)}...` : raw;
+}
+
+export function describeTakeError(err: unknown, action: keyof typeof NOTHING | string = "take"): TakeError {
   const e = err as { shortMessage?: string; message?: string; name?: string; code?: number; cause?: unknown };
   if (e?.message === CLAIM_REFUSED_COPY) return { kind: "error", message: CLAIM_REFUSED_COPY };
   let text = `${e?.shortMessage ?? ""} ${e?.message ?? ""}`;
@@ -311,20 +327,22 @@ export function describeTakeError(err: unknown): TakeError {
   }
   if (rejected || /user rejected|denied transaction|rejected the request/i.test(text)) return { kind: "rejected" };
   if (/ImmediateOrCancelNoFill/i.test(text)) {
-    return { kind: "error", message: "Nobody was trading at that price, nothing changed. Try again." };
+    return { kind: "error", message: `Nobody was trading at that price. ${NOTHING[action] ?? "Nothing changed."} Try again.` };
   }
   if (/insufficient funds/i.test(text)) {
     return { kind: "error", message: "Your wallet has no STT for gas. Get testnet STT, then try again." };
   }
   // dreamDEX's own revert reasons, by name or by selector (the pool ABI does not carry them).
   if (/InsufficientMarginForOrder|0x7ea61260/i.test(text)) {
-    return { kind: "error", message: "Your margin is not enough for this size at the current price. Nothing was taken. Add a little margin or pick a smaller size." };
+    return { kind: "error", message: `Your margin is not enough for this order at the current price. ${NOTHING[action] ?? "Nothing changed."} Add a little margin or pick a smaller size.` };
   }
   if (/BuilderFeeExceedsApproval|0x528c953f/i.test(text)) {
-    return { kind: "error", message: "This wallet has not approved this caller on this market yet. Nothing was taken. Approve the caller, then take." };
+    return { kind: "error", message: `This wallet has not approved this caller on this market yet. ${NOTHING[action] ?? "Nothing changed."} Approve the caller, then take.` };
   }
   if (/voucherBlocked/i.test(text)) {
     return { kind: "error", message: "Practice USDso cannot be used on this market. Deposit real test USDso instead." };
   }
-  return { kind: "error", message: "Something went wrong. Nothing was taken. Try again in a moment." };
+  const nothing = NOTHING[action] ?? "Nothing changed.";
+  const detail = errorDetail(err);
+  return { kind: "error", message: `${nothing} Try again in a moment.${detail ? ` Details: ${detail}` : ""}` };
 }

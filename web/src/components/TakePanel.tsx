@@ -247,7 +247,8 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
       await fn(c);
       toast.update(tid, { tone: "ok", text: DONE[kind] ?? "Done." });
     } catch (e) {
-      const d = describeTakeError(e);
+      console.error(`[callout] ${kind} failed`, e);
+      const d = describeTakeError(e, kind);
       if (d.kind === "rejected") toast.dismiss(tid);
       else toast.update(tid, { tone: "warn", text: d.message });
       setMsg(d.kind === "rejected" ? { tone: "info", text: "Nothing changed." } : { tone: "warn", text: d.message });
@@ -306,7 +307,7 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
     });
   const doClose = () =>
     run("close", async (c) => {
-      await dex.closePosition(c);
+      await dex.closePosition(c, pos);
       const live = await dex.readBracket(c).catch(() => []);
       if (live.length > 0) await dex.cancelBracket(c, live);
       setMsg({ tone: "ok", text: "Position closed. Your stop and target were cancelled and the locked STT is back." });
@@ -349,6 +350,11 @@ export default function TakePanel({ callId, caller, isLong, entry, stop, target,
     return (
       <div className="panel" aria-live="polite">
         <h2>You&apos;re in</h2>
+        {status !== "open" && (
+          <p className="notice is-warn" role="status">
+            This call has ended, but your position is still open on dreamDEX. {bracketOk ? "Your stop and target still protect it." : "Set a stop and target below, or close it."} Close it whenever you want: your P&amp;L becomes real when you do.
+          </p>
+        )}
         <dl className="dist" style={{ marginTop: 8, borderTop: 0, paddingTop: 0 }}>
           <div>
             <dt className="dist-k">Size</dt>

@@ -325,7 +325,13 @@ describe("read failure classification", () => {
 describe("error copy", () => {
   it("maps a no-fill IOC to plain words", () => {
     const r = describeTakeError(new Error("reverted: ImmediateOrCancelNoFill()"));
-    expect(r).toEqual({ kind: "error", message: "Nobody was trading at that price, nothing changed. Try again." });
+    expect(r).toEqual({ kind: "error", message: "Nobody was trading at that price. Nothing was taken. Try again." });
+    // Worded for the action: a failed close never says "nothing was taken".
+    expect(describeTakeError(new Error("reverted: ImmediateOrCancelNoFill()"), "close")).toEqual({ kind: "error", message: "Nobody was trading at that price. Nothing was closed. Try again." });
+  });
+  it("an unknown error carries its real reason, worded for the action", () => {
+    const r = describeTakeError(new Error("WebSocket connection closed"), "close");
+    expect(r).toEqual({ kind: "error", message: "Nothing was closed. Try again in a moment. Details: WebSocket connection closed" });
   });
   it("treats a wallet rejection as not an error, even nested", () => {
     expect(describeTakeError({ code: 4001 })).toEqual({ kind: "rejected" });
