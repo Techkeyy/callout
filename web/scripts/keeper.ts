@@ -62,6 +62,8 @@ async function pass(): Promise<number> {
   const count = (await pub.readContract({ address: CALL_BOOK, abi: callBookAbi, functionName: "callCount" })) as bigint;
   const first = count > BigInt(SCAN) ? count - BigInt(SCAN) + 1n : 1n;
   const marks = new Map<string, { mark: bigint | null; ok: boolean }>();
+  // Expiry is judged against block time, which drifts from wall time on testnet.
+  const chainNow = Number((await pub.getBlock({ blockTag: "latest" })).timestamp);
   let sent = 0;
   let open = 0;
   for (let id = count; id >= first && id > 0n; id--) {
@@ -78,7 +80,7 @@ async function pass(): Promise<number> {
     const k = call.pool.toLowerCase();
     if (!marks.has(k)) marks.set(k, await liveMark(call.pool));
     const m = marks.get(k)!;
-    const o = deriveOutcome({ isLong: call.isLong, mark: m.mark, markOk: m.ok, stop: call.stop, target: call.target, nowSec: Math.floor(Date.now() / 1000), expiresAtSec: Number(call.expiresAt) });
+    const o = deriveOutcome({ isLong: call.isLong, mark: m.mark, markOk: m.ok, stop: call.stop, target: call.target, nowSec: chainNow, expiresAtSec: Number(call.expiresAt) });
     if (o === null) {
       console.log(`#${id} open, mark ${m.ok ? "inside the levels" : "not usable"}`);
       continue;

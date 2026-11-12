@@ -19,6 +19,7 @@ import ShareSheet from "./ShareSheet";
 import NextStep from "./NextStep";
 import { useToast } from "./Toast";
 import { callCardModel } from "@/lib/cardmodel";
+import { chainTimeExact } from "@/lib/chainclock";
 
 const EXPIRIES = [
   { label: "1 hour", secs: 3600 },
@@ -134,7 +135,7 @@ export default function Composer() {
   const v = validatePrices({ isLong, entry, stop, target });
   const offTick = [entry, stop, target].some((p) => p !== null && tick > 0n && p % tick !== 0n);
   const problems = [...v.problems];
-  if (offTick) problems.push(`Prices must move in steps of ${formatPrice(tick)}. Use "Snap to market steps".`);
+  if (offTick) problems.push(`This market only accepts prices in steps of ${formatPrice(tick)}. Use "Round to this market's steps" above.`);
   if (bond === null) problems.push("Enter a bond amount.");
   if (customOn && customSecs > 0 && customSecs < 300) problems.push("A call needs to stay open for at least 5 minutes, so followers have time to take it.");
   if (customOn && !(customSecs > 0)) problems.push("Enter how long the call stays open.");
@@ -207,7 +208,9 @@ export default function Composer() {
         toast.update(tid, { text: "Bond approved. Now confirm the call in your wallet.", hash: undefined });
       }
       setBusy("wallet");
-      const args = [market.pool as `0x${string}`, isLong, entry, stop, target, BigInt(Math.floor(Date.now() / 1000) + expiry), note.trim(), capacity, bond] as const;
+      // The contract checks expiry against block.timestamp, and testnet block time drifts from wall time.
+      const chainNow = await withRetry(() => chainTimeExact(), 3);
+      const args = [market.pool as `0x${string}`, isLong, entry, stop, target, BigInt(chainNow + expiry), note.trim(), capacity, bond] as const;
       // Somnia storage is expensive: use the node estimate and pad it 2x. Never a fixed low limit.
       const est = await publicClient.estimateContractGas({ address: contract, abi: callBookAbi, functionName: "post", args, account: w.address });
       const hash = await wc.writeContract({
@@ -405,9 +408,12 @@ export default function Composer() {
             <button type="button" className="linklike" onClick={useMark} disabled={mark === null || !priceOk}>
               Use live price as entry
             </button>
-            <button type="button" className="linklike" onClick={snap} disabled={!tick}>
-              Snap to market steps
-            </button>
+            {/* Only offered when a price is actually between two allowed steps; otherwise it would do nothing. */}
+            {offTick && tick > 0n && (
+              <button type="button" className="linklike" onClick={snap}>
+                Round to this market&apos;s {formatPrice(tick)} steps
+              </button>
+            )}
           </div>
 
           <div className="field">

@@ -11,6 +11,7 @@ import { NOT_CONNECTED_COPY, UNREACHABLE_COPY } from "@/lib/readstate";
 import { getMarketMeta } from "@/lib/markets";
 import { callStatus, shortAddress } from "@/lib/time";
 import { displayDecimals, formatDisplay } from "@/lib/prices";
+import { chainNowServer } from "@/lib/chaintime";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,7 @@ export default async function CallerPage({ params }: { params: Promise<{ address
   // A failed read must never look like zero. If any take or call read failed, say so instead of showing a low total.
   const partial = takesList.some((t) => t === null) || results.some((r) => r.status === "error");
   const total = takesList.reduce<{ fees: bigint; takers: number; fills: number }>((a, t) => ({ fees: a.fees + (t?.fees ?? 0n), takers: a.takers + (t?.takers ?? 0), fills: a.fills + (t?.fills ?? 0) }), { fees: 0n, takers: 0, fills: 0 });
-  const now = Math.floor(Date.now() / 1000);
+  const now = await chainNowServer();
   return (
     <div className="wrap">
       <div className="page-head">

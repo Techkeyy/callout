@@ -4,6 +4,7 @@ import type { IChartApi, IPriceLine, ISeriesApi, UTCTimestamp } from "lightweigh
 import { applyLive, CHART_INTERVALS, lastTradeAgeSec, levelStats, mapCandles, snapToBar, staleLabel, type ChartCandle } from "@/lib/chart";
 import { formatPosted } from "@/lib/time";
 import { OUTCOME_LABEL, type Outcome } from "@/lib/outcome";
+import { useChainNow } from "@/lib/chainclock";
 
 const INK = "#141414";
 const SHORT = "#C0281D";
@@ -44,7 +45,7 @@ export default function PriceChart(p: ChartProps) {
   const [status, setStatus] = useState<Status>("idle");
   const [attempt, setAttempt] = useState(0);
   const [ready, setReady] = useState(0);
-  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+  const nowSec = useChainNow(15_000);
 
   const host = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -74,12 +75,6 @@ export default function PriceChart(p: ChartProps) {
     };
   }, [open, p.pool, interval, attempt]);
 
-  useEffect(() => {
-    if (!open) return;
-    setNowSec(Math.floor(Date.now() / 1000));
-    const t = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 15_000);
-    return () => clearInterval(t);
-  }, [open]);
 
   const data = useMemo(() => (candles ? applyLive(candles, p.mark, nowSec, interval) : []), [candles, p.mark, nowSec, interval]);
   const hasCandles = !!candles && candles.length > 0;

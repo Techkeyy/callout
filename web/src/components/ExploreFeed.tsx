@@ -9,6 +9,7 @@ import { recordLine } from "@/lib/outcome";
 import { NOT_CONNECTED_COPY, UNREACHABLE_COPY } from "@/lib/readstate";
 import NextStep from "./NextStep";
 import { useWallet } from "@/lib/wallet";
+import { chainNowSec, syncChainClock, useChainNow } from "@/lib/chainclock";
 
 const usd = (v: bigint) => formatDisplay(v, v % 10n ** 18n === 0n ? 0 : 2);
 
@@ -57,22 +58,17 @@ export default function ExploreFeed({ active }: { active: boolean }) {
   const w = useWallet();
   const { markets } = useMarkets(60_000);
   const [res, setRes] = useState<OpenCallsResult | null>(null);
-  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+  const nowSec = useChainNow(1000);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let alive = true;
     setRes(null);
-    loadOpenCalls(Math.floor(Date.now() / 1000)).then((r) => alive && setRes(r));
+    syncChainClock().then(() => loadOpenCalls(chainNowSec())).then((r) => alive && setRes(r));
     return () => {
       alive = false;
     };
   }, [attempt]);
-  useEffect(() => {
-    if (!active) return;
-    const t = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 1000);
-    return () => clearInterval(t);
-  }, [active]);
 
   const meta = (pool: string) => {
     const m = markets?.find((x) => x.pool.toLowerCase() === pool.toLowerCase());

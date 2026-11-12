@@ -6,6 +6,7 @@ import { cache } from "react";
 import { getMarketMeta } from "@/lib/markets";
 import { NOT_CONNECTED_COPY } from "@/lib/readstate";
 import { displayDecimals, formatDisplay } from "@/lib/prices";
+import { chainNowServer } from "@/lib/chaintime";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +79,7 @@ export default async function CallPage({ params }: Params) {
         target={c.target.toString()}
         note={c.note}
         capacity={c.capacity.toString()}
-        serverNow={Math.floor(Date.now() / 1000)}
+        serverNow={await chainNowServer()}
         // Metadata only: the live price comes from the client poll, so a snapshot is never shown as live.
         initialMarket={m ? { name: m.name, tickSize: m.tickSize, markPrice: m.markPrice, markOk: false, readAt: 0 } : null}
         result={result ? { outcome: result.outcome, resolvedAt: result.resolvedAt.toString(), price: result.price.toString(), bond: result.bond.toString(), forfeit: result.forfeit.toString(), claimedTotal: result.claimedTotal.toString() } : null}

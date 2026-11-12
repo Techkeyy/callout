@@ -30,6 +30,7 @@ import NextStep from "./NextStep";
 import { useToast } from "./Toast";
 import { callCardModel, takerCardModel, takerPayoutOf } from "@/lib/cardmodel";
 import Ladder from "./Ladder";
+import { chainNowSec, useChainNow } from "@/lib/chainclock";
 
 interface Props {
   id: string;
@@ -113,10 +114,8 @@ export default function CallLive(p: Props) {
       await new Promise((r) => setTimeout(r, 2500));
     }
   }
-  useEffect(() => {
-    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
-    return () => clearInterval(t);
-  }, []);
+  const chainNow = useChainNow(1000);
+  useEffect(() => setNow(chainNow), [chainNow]);
 
   const entry = BigInt(p.entry);
   const stop = BigInt(p.stop);
@@ -236,7 +235,7 @@ export default function CallLive(p: Props) {
       toast.update(tid, { text: "Submitted. Waiting for confirmation.", hash });
       const rc = await publicClient.waitForTransactionReceipt({ hash });
       if (rc.status !== "success") throw new Error("reverted");
-      setClosedAt(BigInt(Math.floor(Date.now() / 1000)));
+      setClosedAt(BigInt(chainNowSec()));
       setCloseTx(hash);
       toast.update(tid, { tone: "ok", text: "Call closed.", hash });
     } catch (e) {

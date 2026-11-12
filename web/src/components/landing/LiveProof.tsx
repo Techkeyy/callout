@@ -5,6 +5,7 @@ import Ticket from "../Ticket";
 import { useRecent } from "./useRecent";
 import { callStatus, shortAddress } from "@/lib/time";
 import { hitRate } from "@/lib/outcome";
+import { useChainNow } from "@/lib/chainclock";
 
 interface Row {
   caller: string;
@@ -35,7 +36,7 @@ export default function LiveProof() {
       alive = false;
     };
   }, [n]);
-  const now = Math.floor(Date.now() / 1000);
+  const now = useChainNow(5000);
 
   return (
     <div className="lp">

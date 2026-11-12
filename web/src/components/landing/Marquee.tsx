@@ -3,6 +3,7 @@ import Link from "next/link";
 import { OUTCOME_LABEL } from "@/lib/outcome";
 import { formatDisplay } from "@/lib/prices";
 import { useRecent, type RecentItem } from "./useRecent";
+import { useChainNow } from "@/lib/chainclock";
 
 function label(i: RecentItem, nowSec: number): string {
   if (i.outcome !== "open") return OUTCOME_LABEL[i.outcome];
@@ -13,7 +14,7 @@ function label(i: RecentItem, nowSec: number): string {
 /** The strip along the bottom of the hero: real recent calls, read from the chain. */
 export default function Marquee() {
   const { data, retry } = useRecent();
-  const now = Math.floor(Date.now() / 1000);
+  const now = useChainNow(5000);
 
   let body: React.ReactNode;
   if (data.state === "loading") {
