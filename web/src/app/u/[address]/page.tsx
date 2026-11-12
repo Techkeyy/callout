@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { isAddress, getAddress } from "viem";
 import { readCall, readCallsOf, readRecord, readResult, readTakes } from "@/lib/calls";
@@ -5,12 +6,23 @@ import RowClaim from "@/components/RowClaim";
 import { hitRate, OUTCOME_LABEL, recordLine } from "@/lib/outcome";
 import Earnings from "@/components/EarningsLazy";
 import Takes from "@/components/TakesLazy";
+import RecordShare from "@/components/RecordShare";
 import { NOT_CONNECTED_COPY, UNREACHABLE_COPY } from "@/lib/readstate";
 import { getMarketMeta } from "@/lib/markets";
 import { callStatus, shortAddress } from "@/lib/time";
 import { displayDecimals, formatDisplay } from "@/lib/prices";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: { params: Promise<{ address: string }> }): Promise<Metadata> {
+  const { address } = await params;
+  if (!isAddress(address)) return { title: "Caller" };
+  const who = getAddress(address);
+  const rec = await readRecord(who, { retries: 0, timeoutMs: 3000 });
+  const title = `Record of ${shortAddress(who)}`;
+  const description = rec ? `${recordLine(rec)}. Every call is on chain and cannot be edited.` : "Every call is on chain and cannot be edited.";
+  return { title, description, openGraph: { title, description }, twitter: { card: "summary_large_image", title, description } };
+}
 
 export default async function CallerPage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
@@ -44,6 +56,11 @@ export default async function CallerPage({ params }: { params: Promise<{ address
       <div className="page-head">
         <h1 className="num">{shortAddress(who)}</h1>
         <p className="hint">Every call this wallet has posted. They cannot be edited.</p>
+        {ids !== null && (
+          <div className="actions" style={{ marginTop: 12 }}>
+            <RecordShare address={who} />
+          </div>
+        )}
       </div>
       {ids !== null && (
         <section className="panel" style={{ marginBottom: "var(--s-5)" }} aria-label="Record">

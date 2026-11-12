@@ -95,7 +95,8 @@ CallBook v4.1 `0xc83b954b22003dbe498c47b2330699466c79661d`.
 | Call #1 claim: the price had drifted against the call, but nobody took it, so the caller reclaims the full 5 USDso. The record still counts it as an expired loss | [`0x0342d27a...4ca0`](https://explorer.testnet.somnia.network/tokyo/tx/0x0342d27ae0d06b39106b0120deb6918ea3c17876beb00cc9d5243a49710d4ca0) |
 | Call #2 posted (BTC, levels 0.15% from the price) | [`0x1979685d...6a57`](https://explorer.testnet.somnia.network/tokyo/tx/0x1979685d2accc578c495fc25fe8bbacbaba32d259c2a627cce0a17debfe76a57) |
 | Call #2 follower take: Reactivity credited 19.370312 USDso covered, exactly fee × 1000 | [`0x476c4364...0d64`](https://explorer.testnet.somnia.network/tokyo/tx/0x476c4364f91b8e0a4e6d93d8db42bf3acc7f4f0d4bfe9f88dda493bdde0e0d64) |
-<!-- V41_OUTCOME_ROWS -->
+| Call #2 resolved STOPPED at 74,208.19 by the keeper | [`0xb7a08766...b112`](https://explorer.testnet.somnia.network/tokyo/tx/0xb7a0876621cbc50e2e286b2bbe3ac2b8f9d0e6e1da5a5eb418bff06cbd0fb112) |
+| Call #2: the follower claims the whole 5 USDso bond | [`0xf65aebc7...17b9`](https://explorer.testnet.somnia.network/tokyo/tx/0xf65aebc7a46654f3899e8aeeca488bdcbad9cd2b3c555150f08210c6056d17b9) |
 
 ### v4: the expired-at-a-loss settlement
 

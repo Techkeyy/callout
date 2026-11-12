@@ -15,10 +15,10 @@ import { defaultBond, minBondFor, validatePostRules } from "@/lib/rules";
 import Ticket from "./Ticket";
 import Ladder from "./Ladder";
 import PriceChartLazy from "./PriceChartLazy";
-import ShareModal from "./ShareModal";
+import ShareSheet from "./ShareSheet";
 import NextStep from "./NextStep";
 import { useToast } from "./Toast";
-import { callShareText, cardUrl } from "@/lib/share";
+import { callCardModel } from "@/lib/cardmodel";
 
 const EXPIRIES = [
   { label: "1 hour", secs: 3600 },
@@ -37,8 +37,6 @@ export default function Composer() {
   const w = useWallet();
   const toast = useToast();
   const [shareOpen, setShareOpen] = useState(false);
-  const [origin, setOrigin] = useState(process.env.NEXT_PUBLIC_SITE_URL ?? "");
-  useEffect(() => setOrigin(window.location.origin), []);
   const { markets, stale, failed } = useMarkets();
   const [nowMs, setNowMs] = useState(0);
   useEffect(() => {
@@ -239,9 +237,10 @@ export default function Composer() {
   if (posted) {
     const link = posted.id !== null ? `/c/${posted.id}` : null;
     const sn = posted.snap;
-    const bondTxt = formatDisplay(sn.bond, sn.bond % 10n ** 18n === 0n ? 0 : 2);
-    const shareText = callShareText({ market: sn.market, isLong: sn.isLong, entry: formatDisplay(sn.entry, sn.dp), stop: formatDisplay(sn.stop, sn.dp), target: formatDisplay(sn.target, sn.dp), bond: bondTxt });
-    const url = link && origin ? cardUrl(origin, posted.id!) : "";
+    const cardModel =
+      posted.id !== null
+        ? callCardModel({ id: posted.id, market: sn.market, isLong: sn.isLong, entry: sn.entry, stop: sn.stop, target: sn.target, dp: sn.dp, outcome: "open", caller: w.address ?? "0x0000000000000000000000000000000000000000", bond: sn.bond, capacity: sn.capacity, result: null, record: null })
+        : null;
     return (
       <div className="wrap">
         <div className="empty">
@@ -249,7 +248,7 @@ export default function Composer() {
           <p>It is written on chain and cannot be edited. Share the link and anyone can see it.</p>
           <NextStep tone="go">Share it so others can take it.</NextStep>
           <div className="actions">
-            {url && (
+            {cardModel && (
               <button type="button" className="btn btn-primary" onClick={() => setShareOpen(true)}>
                 Share your call
               </button>
@@ -278,11 +277,7 @@ export default function Composer() {
             Write another call
           </button>
         </div>
-        {shareOpen && url && (
-          <ShareModal title="Your call is live" intro="It is on chain and cannot be edited. Share it so followers can take it." text={shareText} url={url} cardHref={link ?? undefined} onClose={() => setShareOpen(false)}>
-            <Ticket id={posted.id ?? undefined} market={sn.market} isLong={sn.isLong} entry={sn.entry} stop={sn.stop} target={sn.target} dp={sn.dp} note={sn.note} outcome="open" secsLeft={sn.secsLeft} bond={sn.bond} capacity={sn.capacity} caller={w.address ?? undefined} />
-          </ShareModal>
-        )}
+        {shareOpen && cardModel && <ShareSheet title="Your call is live" intro="It is on chain and cannot be edited. Share it so followers can take it." model={cardModel} openHref={link ?? undefined} onClose={() => setShareOpen(false)} />}
       </div>
     );
   }

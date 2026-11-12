@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useWallet } from "@/lib/wallet";
 import { useMarkets } from "@/lib/useMarkets";
 import { ageLabel, markAgeSec, STALE_PRICE_COPY } from "@/lib/mark";
@@ -25,10 +25,10 @@ import { callStatus } from "@/lib/time";
 import { displayDecimals, formatDisplay, ladderDistances, toNumber } from "@/lib/prices";
 import Ticket from "./Ticket";
 import PriceChartLazy from "./PriceChartLazy";
-import ShareButtons from "./ShareButtons";
+import ShareSheet from "./ShareSheet";
 import NextStep from "./NextStep";
 import { useToast } from "./Toast";
-import { callShareText, cardUrl, hitShareText, takeShareText } from "@/lib/share";
+import { callCardModel, takerCardModel, takerPayoutOf } from "@/lib/cardmodel";
 import Ladder from "./Ladder";
 
 interface Props {
@@ -55,8 +55,8 @@ export default function CallLive(p: Props) {
   const w = useWallet();
   const toast = useToast();
   const [justTook, setJustTook] = useState(false);
-  const [origin, setOrigin] = useState(process.env.NEXT_PUBLIC_SITE_URL ?? "");
-  useEffect(() => setOrigin(window.location.origin), []);
+  const [sheet, setSheet] = useState<"call" | "taker" | null>(null);
+  const autoOpened = useRef(false);
   const { markets, stale } = useMarkets(4000, p.pool);
   const [now, setNow] = useState(p.serverNow);
   const [closedAt, setClosedAt] = useState(BigInt(p.closedAt));
@@ -140,11 +140,70 @@ export default function CallLive(p: Props) {
   const canClaimEarly = settleable && (isMine || (myCovered !== null && myCovered > 0n));
   const settlement = result ? settlementLine({ outcome, priceText: formatDisplay(BigInt(result.price), dp), forfeit: BigInt(result.forfeit), bond: BigInt(result.bond), covered }) : null;
 
-  const shareCall = { market: name, isLong: p.isLong, entry: formatDisplay(entry, dp), stop: formatDisplay(stop, dp), target: formatDisplay(target, dp), bond: result ? formatDisplay(BigInt(result.bond), BigInt(result.bond) % 10n ** 18n === 0n ? 0 : 2) : null };
-  const url = origin ? cardUrl(origin, p.id) : "";
-  const shareMode: "took" | "hit" | "call" = justTook ? "took" : outcome === "hit" && isMine ? "hit" : "call";
-  const shareHead = shareMode === "took" ? "You took this call. Share it?" : shareMode === "hit" ? "Share your hit" : "Share this call";
-  const shareBody = shareMode === "took" ? takeShareText(shareCall) : shareMode === "hit" ? hitShareText(shareCall) : callShareText(shareCall);
+  // The share cards. The call card turns into the result card once the call is resolved.
+  const bondNow = result ? BigInt(result.bond) : null;
+  const callModel = callCardModel({
+    id: p.id,
+    market: name,
+    isLong: p.isLong,
+    entry,
+    stop,
+    target,
+    dp,
+    outcome,
+    caller: p.caller,
+    bond: bondNow,
+    capacity,
+    result: result && resolved ? { price: BigInt(result.price), forfeit: BigInt(result.forfeit) } : null,
+    record,
+  });
+  const isTaker = !!w.address && !isMine && myCovered !== null && myCovered > 0n;
+  const takerInput = w.address && isTaker
+    ? {
+        id: p.id,
+        market: name,
+        isLong: p.isLong,
+        entry,
+        stop,
+        target,
+        dp,
+        outcome,
+        caller: p.caller,
+        bond: bondNow,
+        capacity,
+        result: result && resolved ? { price: BigInt(result.price), forfeit: BigInt(result.forfeit) } : null,
+        taker: w.address,
+        covered: myCovered,
+        totalCovered: covered,
+        claimable,
+        mark: !resolved && live && live.markOk ? live.markPrice : null,
+      }
+    : null;
+  const takerModel = takerInput ? takerCardModel(takerInput) : null;
+  const myPayout = takerInput ? takerPayoutOf(takerInput) : null;
+  // Right after a take, offer the taker card once the size is on the ledger.
+  useEffect(() => {
+    if (justTook && takerModel && !autoOpened.current) {
+      autoOpened.current = true;
+      setSheet("taker");
+    }
+  }, [justTook, takerModel]);
+  const shareMode: "took" | "mine" | "taker" | "call" = justTook && takerModel ? "took" : resolved && isMine ? "mine" : resolved && takerModel ? "taker" : "call";
+  const shareHead = shareMode === "took" ? "You took this call. Share it?" : shareMode === "mine" ? "Share your result" : shareMode === "taker" ? "Share your take" : resolved ? "Share this result" : "Share this call";
+  const shareBody =
+    shareMode === "took"
+      ? "Your take is on chain. Show people what you backed."
+      : shareMode === "mine"
+        ? outcome === "hit"
+          ? "Called it. Your bond came back. Show the result."
+          : outcome === "stopped"
+            ? "Your bond paid the people who took the call. Owning it builds trust."
+            : "The call settled at the price. Show the result."
+        : shareMode === "taker"
+          ? myPayout
+            ? `The caller's bond paid you ${formatDisplay(myPayout, 2)} USDso. Share it?`
+            : "See how the call went and share it."
+          : "Post the card anywhere. The link has its own preview.";
   const hasClaim = resolved && claimable !== null && claimable > 0n;
   const next = !w.address ? (
     <>Connect your wallet to post or take.</>
@@ -152,8 +211,8 @@ export default function CallLive(p: Props) {
     <>{isMine ? "Claim your bond." : "Claim your share of the bond."}</>
   ) : justTook ? (
     <>Your stop and target are armed. Watch it here.</>
-  ) : shareMode === "hit" ? (
-    <>Share your hit.</>
+  ) : shareMode === "mine" ? (
+    <>Share your result.</>
   ) : !resolved && status === "open" && !isMine ? (
     <>Take this call below. Your stop and target are set for you.</>
   ) : !resolved && status === "open" && isMine ? (
@@ -221,10 +280,19 @@ export default function CallLive(p: Props) {
           onChanged={refreshTakes}
           onTaken={() => setJustTook(true)}
         />
-        <div className="panel">
+        <div className="panel share-prompt">
           <h2>{shareHead}</h2>
-          <p className="hint" style={{ marginBottom: 12 }}>{shareBody} {url}</p>
-          {url ? <ShareButtons text={shareBody} url={url} primary={justTook || shareMode === "hit"} /> : <div className="skeleton" style={{ height: 44 }} aria-label="Loading" />}
+          <p className="hint" style={{ margin: 0 }}>{shareBody}</p>
+          <div className="actions">
+            {(shareMode === "took" || shareMode === "taker") && takerModel && (
+              <button type="button" className="btn btn-primary" onClick={() => setSheet("taker")}>
+                Share my take
+              </button>
+            )}
+            <button type="button" className={`btn ${shareMode === "mine" || shareMode === "call" ? "btn-primary" : ""}`} onClick={() => setSheet("call")}>
+              {resolved ? "Share the result" : "Share the call"}
+            </button>
+          </div>
         </div>
         <div className="panel">
           <h2>Takes</h2>
@@ -300,6 +368,8 @@ export default function CallLive(p: Props) {
         )}
       </div>
       </div>
+      {sheet === "call" && <ShareSheet title={resolved ? "Share this result" : "Share this call"} model={callModel} onClose={() => setSheet(null)} />}
+      {sheet === "taker" && takerModel && <ShareSheet title="Share your take" intro="The call move is the price move of the call. The bond payout is what the caller's bond paid takers." model={takerModel} onClose={() => setSheet(null)} />}
     </div>
   );
 }
